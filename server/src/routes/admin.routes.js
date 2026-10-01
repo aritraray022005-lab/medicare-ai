@@ -1,0 +1,100 @@
+const express = require("express");
+
+const router = express.Router();
+
+const admincontroller = require("../controller/admin.controller");
+const adminAuthMiddleware = require("../middleware/adminAuth.middleware");
+
+
+const ValidationMiddleware = require("../middleware/validate.middleware");
+const adminValidation = require("../validations/admin.validation");
+
+
+// ==================== AUTH ====================
+
+router.post(
+    "/auth/register",
+    ValidationMiddleware(adminValidation.registerSchema),
+    admincontroller.register
+);
+
+router.post(
+    "/auth/login",
+    ValidationMiddleware(adminValidation.loginSchema),
+    admincontroller.login
+);
+
+router.post(
+    "/auth/logout",
+    admincontroller.logout
+);
+
+// Lightweight session check used by the client to decide which nav links to show
+router.get(
+    "/auth/me",
+    adminAuthMiddleware,
+    (req, res) => res.status(200).json({
+        status: "success",
+        admin: { _id: req.userDetails._id, email: req.userDetails.email }
+    })
+);
+
+
+// ==================== ADMIN POWERS ====================
+
+router.get(
+    "/get-doctors",
+    adminAuthMiddleware,
+    admincontroller.getDoctors
+);
+
+router.patch(
+    "/doctor/verification",
+    adminAuthMiddleware,
+    ValidationMiddleware(adminValidation.doctorVerificationSchema),
+    admincontroller.updateDoctorVerification
+);
+
+router.get(
+    "/get-patients",
+    adminAuthMiddleware,
+    admincontroller.getPatients
+);
+
+router.patch(
+    "/doctor/block",
+    adminAuthMiddleware,
+    ValidationMiddleware(adminValidation.doctorBlockSchema),
+    admincontroller.updateDoctorBlockStatus
+);
+
+router.patch(
+    "/patient/block",
+    adminAuthMiddleware,
+    ValidationMiddleware(adminValidation.patientBlockSchema),
+    admincontroller.updatePatientBlockStatus
+);
+
+
+// ==================== PASSWORD RESET ====================
+
+router.post(
+    "/change-password/send-otp",
+    ValidationMiddleware(adminValidation.sendResetOTPSchema),
+    admincontroller.sendMailAdminResetPass
+);
+
+router.post(
+    "/change-password/verify-otp",
+    ValidationMiddleware(adminValidation.verifyResetOTPSchema),
+    admincontroller.verifyOTAdminResetPass
+);
+
+router.post(
+    "/change-password",
+    ValidationMiddleware(adminValidation.changePasswordSchema),
+    admincontroller.changePassword
+);
+
+
+module.exports = router;
