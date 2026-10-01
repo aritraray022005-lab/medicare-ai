@@ -1,0 +1,125 @@
+name: MEDICARE AI CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            client/package-lock.json
+            server/package-lock.json
+
+      - name: Install and build frontend
+        working-directory: client
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+
+      - name: Install backend dependencies
+        working-directory: server
+        run: npm ci
+
+      - name: Create CI environment file
+        shell: bash
+        run: |
+          cat > server/.env <<'EOF'
+          MONGO_URI=mongodb://mongodb:27017/medicare_ci
+          PORT=5000
+          JWT_TOKEN_SECRET=ci-test-secret
+          EMAIL_ID=ci@example.com
+          EMAIL_PASSWORD=ci-test-password
+          GEMINI_API_KEY=ci-test-key
+          EOF
+
+      - name: Create CI Docker Compose override
+        shell: bash
+        run: |
+          cat > docker-compose.ci.yml <<'EOF'
+          services:
+            mongodb:
+              image: mongo:8
+              healthcheck:
+                test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+                interval: 5s
+                timeout: 5s
+                retries: 10
+
+            server:
+              depends_on:
+                mongodb:
+                  condition: service_healthy
+              environment:
+                MONGO_URI: mongodb://mongodb:27017/medicare_ci
+
+          EOF
+
+      - name: Build Docker images
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml build
+
+      - name: Start Docker stack
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
+
+      - name: Wait for backend health
+        shell: bash
+        run: |
+          echo "Waiting for backend..."
+
+          for i in {1..30}; do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' medicare-server 2>/dev/null || true)
+
+            echo "Backend health: $STATUS"
+
+            if [ "$STATUS" = "healthy" ]; then
+              echo "Backend is healthy."
+              exit 0
+            fi
+
+            if [ "$STATUS" = "unhealthy" ]; then
+              echo "Backend became unhealthy."
+              docker compose -f docker-compose.yml -f docker-compose.ci.yml logs server
+              exit 1
+            fi
+
+            sleep 2
+          done
+
+          echo "Backend did not become healthy."
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml logs server
+          exit 1
+
+      - name: Test backend health endpoint
+        run: |
+          curl --fail http://localhost:5000/api/health
+
+      - name: Test frontend to backend proxy
+        run: |
+          curl --fail http://localhost:5173/api/health
+
+      - name: Show Docker status
+        if: always()
+        run: docker ps
+
+      - name: Show Docker logs
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml logs
+
+      - name: Shutdown Docker stack
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v
