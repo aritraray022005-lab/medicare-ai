@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+
   pull_request:
     branches:
       - main
@@ -53,6 +54,7 @@ jobs:
         run: |
           cat > docker-compose.ci.yml <<'EOF'
           services:
+
             mongodb:
               image: mongo:8
               healthcheck:
@@ -67,14 +69,21 @@ jobs:
                   condition: service_healthy
               environment:
                 MONGO_URI: mongodb://mongodb:27017/medicare_ci
-
           EOF
 
       - name: Build Docker images
-        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml build
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.ci.yml \
+            build
 
       - name: Start Docker stack
-        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.ci.yml \
+            up -d
 
       - name: Wait for backend health
         shell: bash
@@ -82,7 +91,10 @@ jobs:
           echo "Waiting for backend..."
 
           for i in {1..30}; do
-            STATUS=$(docker inspect --format='{{.State.Health.Status}}' medicare-server 2>/dev/null || true)
+
+            STATUS=$(docker inspect \
+              --format='{{.State.Health.Status}}' \
+              medicare-server 2>/dev/null || true)
 
             echo "Backend health: $STATUS"
 
@@ -93,7 +105,12 @@ jobs:
 
             if [ "$STATUS" = "unhealthy" ]; then
               echo "Backend became unhealthy."
-              docker compose -f docker-compose.yml -f docker-compose.ci.yml logs server
+
+              docker compose \
+                -f docker-compose.yml \
+                -f docker-compose.ci.yml \
+                logs server
+
               exit 1
             fi
 
@@ -101,7 +118,12 @@ jobs:
           done
 
           echo "Backend did not become healthy."
-          docker compose -f docker-compose.yml -f docker-compose.ci.yml logs server
+
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.ci.yml \
+            logs server
+
           exit 1
 
       - name: Test backend health endpoint
@@ -114,12 +136,21 @@ jobs:
 
       - name: Show Docker status
         if: always()
-        run: docker ps
+        run: |
+          docker ps
 
       - name: Show Docker logs
         if: always()
-        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml logs
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.ci.yml \
+            logs
 
       - name: Shutdown Docker stack
         if: always()
-        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.ci.yml \
+            down -v
