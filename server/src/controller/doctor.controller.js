@@ -116,7 +116,7 @@ const register = async (req, res) => {
         res.cookie("doctorToken", token, {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
-            sameSite: "strict",
+            sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
             maxAge: 24 * 60 * 60 * 1000
         });
 
@@ -213,7 +213,7 @@ const login = async (req, res) => {
         res.cookie("doctorToken", token, {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
-            sameSite: "strict",
+            sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
             maxAge: 24 * 60 * 60 * 1000
         });
 
@@ -231,7 +231,11 @@ const login = async (req, res) => {
 //Auth
 const logout = async (req, res) => {
     try {
-        res.clearCookie("doctorToken");
+        res.clearCookie("doctorToken", {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: process.env.NODE_ENV === "production" ? "none" : "lax"
+        });
 
         res.status(200).json({ msg: "Logged out Successfully " });
     } catch (error) {
