@@ -6,6 +6,8 @@ const patientAuthMiddleware = async (req, res, next) => {
     try {
         const token = req.cookies.patientToken;
 
+        console.log("PATIENT TOKEN RECEIVED:", !!token);
+
         if (!token) {
             return res.status(401).json({
                 status: "failed",
@@ -18,9 +20,13 @@ const patientAuthMiddleware = async (req, res, next) => {
             config.JWT_TOKEN_SECRET
         );
 
+        console.log("PATIENT JWT VERIFIED:", decoded.id);
+
         const patient = await Patient.findById(decoded.id);
 
         if (!patient) {
+            console.log("PATIENT NOT FOUND:", decoded.id);
+
             return res.status(401).json({
                 status: "failed",
                 msg: "Patient not found."
@@ -32,6 +38,12 @@ const patientAuthMiddleware = async (req, res, next) => {
         next();
 
     } catch (error) {
+        console.error(
+            "PATIENT AUTH ERROR:",
+            error.name,
+            error.message
+        );
+
         return res.status(401).json({
             status: "failed",
             msg: "Invalid or expired token."
