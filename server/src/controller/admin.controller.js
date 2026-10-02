@@ -156,9 +156,7 @@ const sendMailAdminResetPass = async (req,res) =>{
         
         await admin.save();
 
-        const mailOption = OTPutil.resetPassMailOption(newOTP,email);
-
-        await OTPutil.transporter.sendMail(mailOption);
+        await OTPutil.sendResetPassMail(newOTP, email);
 
 
         res.status(200).json({

@@ -122,26 +122,12 @@ const register = async (req, res) => {
 
 
         // =========================
-        // SEND VERIFICATION EMAIL
-        // =========================
-
-        const mailOption =
-            OTPutil.doctorRegistrationVerificationMailOptions(
-                name,
-                email,
-                "/"
-            );
-
-        await OTPutil.transporter.sendMail(mailOption);
-
-
-        // =========================
         // RESPONSE
         // =========================
 
         return res.status(201).json({
             status: "success",
-            msg: "Doctor registered successfully. Please verify your email.",
+            msg: "Doctor registered successfully.",
             user: {
                 id: newDoctor._id,
                 name: newDoctor.name,
@@ -283,11 +269,7 @@ const sendMailDoctorVerifaction = async (req, res) => {
 
 
         userEmail = doctor.email;
-        const mailOption = OTPutil.accountVerificationMailOptions(newOTP, userEmail);
-
-
-
-        const info = await OTPutil.transporter.sendMail(mailOption);
+        await OTPutil.sendAccountVerificationMail(newOTP, userEmail);
 
 
         res.status(200).json({
@@ -688,9 +670,7 @@ const sendMailDoctorResetPass = async (req, res) => {
 
         await doctor.save();
 
-        const mailOption = OTPutil.resetPassMailOption(newOTP, email);
-
-        await OTPutil.transporter.sendMail(mailOption);
+        await OTPutil.sendResetPassMail(newOTP, email);
 
 
         res.status(200).json({

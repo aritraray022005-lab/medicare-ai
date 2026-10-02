@@ -18,9 +18,9 @@ if(process.env.EMAIL_ID === undefined)
     throw new Error('EMAIL_ID is not defined in the environment variables');
 }
 
-if(process.env.EMAIL_PASSWORD  === undefined)
+if(process.env.RESEND_API_KEY === undefined)
 {
-    throw new Error('EMAIL_PASSWORD is not defined in the environment variables');
+    throw new Error('RESEND_API_KEY is not defined in the environment variables');
 }
 
 const config = {
@@ -28,7 +28,7 @@ const config = {
     PORT: process.env.PORT,
     JWT_TOKEN_SECRET: process.env.JWT_TOKEN_SECRET,
     EMAIL_ID : process.env.EMAIL_ID ,
-    EMAIL_PASSWORD : process.env.EMAIL_PASSWORD 
+    RESEND_API_KEY : process.env.RESEND_API_KEY 
 }
 
 module.exports = config; 

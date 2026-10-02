@@ -188,10 +188,7 @@ const sendMailPatientVerifaction = async (req,res) =>{
         await patient.save();
 
         userEmail = patient.email;
-        const mailOption = OTPutil.accountVerificationMailOptions(newOTP,userEmail);
-
-        await OTPutil.transporter.sendMail(mailOption);
-
+        await OTPutil.sendAccountVerificationMail(newOTP, userEmail);
         res.status(200).json({
             status: "success",
             mdg: "OTP has been send to your Email."
@@ -276,10 +273,7 @@ const sendMailPatientResetPass = async (req,res) =>{
         
         await patient.save();
 
-        const mailOption = OTPutil.resetPassMailOption(newOTP,email);
-
-        await OTPutil.transporter.sendMail(mailOption);
-
+        await OTPutil.sendResetPassMail(newOTP, email);
 
         res.status(200).json({
             status: "success",
