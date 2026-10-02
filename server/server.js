@@ -32,8 +32,12 @@ app.use(morgan("dev"));
 // app.use(cors());
 
 app.use(cors({
-  origin: ["http://localhost:5173", "http://localhost:5174"],
-  credentials: true //as i am passing cookies credentials must be true 
+  origin: [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "YOUR_FRONTEND_URL"
+  ],
+  credentials: true
 }));
 
 

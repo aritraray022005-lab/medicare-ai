@@ -1,14 +1,8 @@
-import axios from 'axios';
-
-// Base configuration matching existing endpoints
-const aiClient = axios.create({
-  baseURL: '/api/ai',
-  withCredentials: true, // respects existing cookie auth
-});
+import api from '../axios';
 
 export const sendChatMessage = async (message, history = []) => {
   try {
-    const response = await aiClient.post('/chat', { message, history });
+    const response = await api.post('/api/ai/chat', { message, history });
     return response.data;
   } catch (error) {
     throw error;
