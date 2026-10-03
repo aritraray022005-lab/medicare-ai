@@ -10,51 +10,62 @@ const generateOTP = () => {
 
 
 // =====================================================
-// SEND EMAIL USING RESEND API
+// SEND EMAIL USING GMAIL API
 // =====================================================
 
-const { Resend } = require("resend");
-const resend = new Resend(process.env.RESEND_API_KEY);
+const { google } = require("googleapis");
+
+const oauth2Client = new google.auth.OAuth2(
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.GOOGLE_CLIENT_SECRET
+);
+
+oauth2Client.setCredentials({
+  refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
+});
+
+const gmail = google.gmail({ version: "v1", auth: oauth2Client });
 
 const sendEmail = async (to, subject, text, html) => {
   try {
-    console.log("====================================");
-    console.log("SENDING EMAIL THROUGH RESEND");
-    console.log("Recipient:", to);
-    console.log("Subject:", subject);
-    console.log("RESEND API key exists:", !!process.env.RESEND_API_KEY);
-    console.log("====================================");
-
-    if (!process.env.RESEND_API_KEY) {
-      throw new Error("RESEND_API_KEY is missing");
-    }
-
     if (!to) {
       throw new Error("Recipient email is missing");
     }
 
-    const { data, error } = await resend.emails.send({
-      from: "MEDCARE AI <onboarding@resend.dev>",
-      to: [to],
-      subject,
-      text,
-      html
-    });
+    let message = `From: MEDCARE AI <${process.env.GMAIL_USER}>\r\n`;
+    message += `To: ${to}\r\n`;
+    message += `Subject: =?utf-8?B?${Buffer.from(subject).toString('base64')}?=\r\n`;
+    message += `MIME-Version: 1.0\r\n`;
+    message += `Content-Type: multipart/alternative; boundary="boundary-string"\r\n\r\n`;
 
-    if (error) {
-      console.error("====================================");
-      console.error("RESEND EMAIL FAILED");
-      console.error("Response:", error);
-      console.error("====================================");
-      throw new Error(`Resend email failed: ${error.message}`);
+    if (text) {
+      message += `--boundary-string\r\n`;
+      message += `Content-Type: text/plain; charset="UTF-8"\r\n\r\n`;
+      message += `${text}\r\n\r\n`;
     }
 
-    console.log("====================================");
-    console.log("RESEND EMAIL ACCEPTED");
-    console.log("Resend email ID:", data.id);
-    console.log("====================================");
+    if (html) {
+      message += `--boundary-string\r\n`;
+      message += `Content-Type: text/html; charset="UTF-8"\r\n\r\n`;
+      message += `${html}\r\n\r\n`;
+    }
 
-    return data;
+    message += `--boundary-string--`;
+
+    const encodedMessage = Buffer.from(message)
+      .toString("base64")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+
+    const res = await gmail.users.messages.send({
+      userId: "me",
+      requestBody: {
+        raw: encodedMessage,
+      },
+    });
+
+    return res.data;
   } catch (error) {
     console.error("====================================");
     console.error("EMAIL SENDING FAILED");
