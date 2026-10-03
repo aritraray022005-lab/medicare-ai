@@ -9,6 +9,8 @@ const OTPutil = require("../util/otp.util");
 const register = async (req, res) => {
     try {
 
+        console.log("========== DOCTOR REGISTER START ==========");
+
         const {
             name,
             email,
@@ -23,12 +25,19 @@ const register = async (req, res) => {
             nmrNumber
         } = req.body;
 
-        const medicalRegistrationCertificate = req.file ? req.file.path : null;
+        console.log("1. Request body received");
+        console.log("Email:", email);
+        console.log("Name:", name);
 
+        const medicalRegistrationCertificate = req.file
+            ? req.file.path
+            : null;
 
-        // =========================
-        // REQUIRED FIELD VALIDATION
-        // =========================
+        console.log(
+            "2. File received:",
+            !!medicalRegistrationCertificate
+        );
+
 
         if (
             !name ||
@@ -42,6 +51,8 @@ const register = async (req, res) => {
             !locationCity ||
             !nmrNumber
         ) {
+            console.log("3. Required field validation failed");
+
             return res.status(400).json({
                 status: "failed",
                 msg: "All required fields must be provided."
@@ -49,20 +60,25 @@ const register = async (req, res) => {
         }
 
         if (!medicalRegistrationCertificate) {
+            console.log("4. Medical certificate missing");
+
             return res.status(400).json({
                 status: "failed",
                 msg: "Medical Registration Certificate (PDF) is required."
             });
         }
 
+        console.log("5. Required fields passed");
 
-        // =========================
-        // CHECK EXISTING DOCTOR
-        // =========================
 
         const existingDoctor = await Doctor.findOne({
             email: email.toLowerCase()
         });
+
+        console.log(
+            "6. Existing doctor:",
+            !!existingDoctor
+        );
 
         if (existingDoctor) {
             return res.status(400).json({
@@ -72,9 +88,7 @@ const register = async (req, res) => {
         }
 
 
-        // =========================
-        // CREATE DOCTOR
-        // =========================
+        console.log("7. Creating doctor...");
 
         const newDoctor = await Doctor.create({
             name,
@@ -93,10 +107,13 @@ const register = async (req, res) => {
             }
         });
 
+        console.log(
+            "8. Doctor created:",
+            newDoctor._id.toString()
+        );
 
-        // =========================
-        // CREATE JWT
-        // =========================
+
+        console.log("9. Creating JWT...");
 
         const token = jwt.sign(
             {
@@ -108,22 +125,21 @@ const register = async (req, res) => {
             }
         );
 
+        console.log("10. JWT created");
 
-        // =========================
-        // STORE TOKEN IN COOKIE
-        // =========================
 
         res.cookie("doctorToken", token, {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
-            sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+            sameSite: process.env.NODE_ENV === "production"
+                ? "none"
+                : "lax",
             maxAge: 24 * 60 * 60 * 1000
         });
 
+        console.log("11. Cookie set");
 
-        // =========================
-        // RESPONSE
-        // =========================
+        console.log("========== DOCTOR REGISTER SUCCESS ==========");
 
         return res.status(201).json({
             status: "success",
@@ -144,7 +160,9 @@ const register = async (req, res) => {
 
     } catch (error) {
 
-        console.error("Doctor registration error:", error);
+        console.error("========== DOCTOR REGISTER ERROR ==========");
+        console.error(error);
+        console.error("===========================================");
 
         return res.status(500).json({
             status: "failed",
@@ -438,7 +456,7 @@ const updateDoctorProfile = async (req, res) => {
         if (bio !== undefined) {
             updates.bio = bio;
         }
-        
+
         if (clinicLocation !== undefined) {
             updates.clinicLocation = clinicLocation;
         }
