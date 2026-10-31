@@ -41,11 +41,15 @@ jobs:
         working-directory: server
         run: npm ci
 
+      - name: Run backend tests
+        working-directory: server
+        run: npm test
+
       - name: Create CI environment file
         shell: bash
         run: |
           cat > server/.env <<'EOF'
-          MONGO_URI=mongodb://mongodb:27017/medicare_ci
+          MONGO_URI=mongodb://mongodb:27017/medicare_ci?replicaSet=rs0
           PORT=5000
           JWT_TOKEN_SECRET=ci-test-secret
           EMAIL_ID=ci@example.com
@@ -61,19 +65,45 @@ jobs:
 
             mongodb:
               image: mongo:8
+              command: ["--replSet", "rs0", "--bind_ip_all"]
+              ports:
+                - "27017:27017"
               healthcheck:
-                test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-                interval: 5s
+                test: |
+                  mongosh --port 27017 --quiet --eval "
+                    try {
+                      var s = rs.status();
+                      if (s.ok === 1 && s.members && s.members[0] && s.members[0].stateStr === 'PRIMARY') {
+                        quit(0);
+                      }
+                    } catch (e) {
+                      try {
+                        var r = rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongodb:27017' }] });
+                        if (r.ok === 1 || r.codeName === 'AlreadyInitialized') {
+                          quit(0);
+                        }
+                      } catch (err) {
+                        quit(1);
+                      }
+                    }
+                    quit(1);
+                  "
+                interval: 3s
                 timeout: 5s
-                retries: 10
+                retries: 20
+                start_period: 2s
 
             server:
               depends_on:
                 mongodb:
                   condition: service_healthy
               environment:
-                MONGO_URI: mongodb://mongodb:27017/medicare_ci
+                MONGO_URI: mongodb://mongodb:27017/medicare_ci?replicaSet=rs0
           EOF
+
+      - name: Configure runner hosts for MongoDB replica set
+        run: |
+          echo "127.0.0.1 mongodb" | sudo tee -a /etc/hosts
 
       - name: Build Docker images
         run: |
@@ -88,6 +118,44 @@ jobs:
             -f docker-compose.yml \
             -f docker-compose.ci.yml \
             up -d
+
+      - name: Verify MongoDB replica set is PRIMARY
+        shell: bash
+        run: |
+          echo "Waiting for MongoDB replica set rs0 to become PRIMARY..."
+          for i in {1..30}; do
+            STATUS=$(docker compose \
+              -f docker-compose.yml \
+              -f docker-compose.ci.yml \
+              exec -T mongodb mongosh --port 27017 --quiet --eval "
+                try {
+                  var s = rs.status();
+                  if (s.ok === 1 && s.members && s.members[0] && s.members[0].stateStr === 'PRIMARY') {
+                    print('PRIMARY');
+                  } else {
+                    print('NOT_YET_PRIMARY');
+                  }
+                } catch (e) {
+                  print('NOT_INITIALIZED');
+                }
+              " 2>/dev/null || true)
+
+            echo "MongoDB replica set state: $STATUS"
+
+            if [[ "$STATUS" == *"PRIMARY"* && "$STATUS" != *"NOT"* ]]; then
+              echo "MongoDB replica set rs0 is confirmed PRIMARY."
+              break
+            fi
+
+            sleep 2
+          done
+
+      - name: Run replica set integration tests
+        working-directory: server
+        env:
+          MONGO_URI: mongodb://mongodb:27017/medicare_ci?replicaSet=rs0
+          RUN_INTEGRATION_TESTS: "true"
+        run: npm run test:integration
 
       - name: Wait for backend health
         shell: bash
@@ -132,7 +200,10 @@ jobs:
 
       - name: Test backend health endpoint
         run: |
-          curl --fail http://localhost:5000/api/health
+          RESPONSE=$(curl --fail --silent http://localhost:5000/api/health)
+          echo "Health response: $RESPONSE"
+          echo "$RESPONSE" | grep -q '"status":"healthy"'
+          echo "$RESPONSE" | grep -q '"database":"connected"'
 
       - name: Test frontend to backend proxy
         run: |

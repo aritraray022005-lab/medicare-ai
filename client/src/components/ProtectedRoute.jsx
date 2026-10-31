@@ -2,8 +2,8 @@ import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-const LOGIN = { patient: '/login', doctor: '/doctor/login', admin: '/admin/login' };
-const HOME = { patient: '/dashboard', doctor: '/doctor/dashboard', admin: '/admin/dashboard' };
+const LOGIN = { patient: '/login', doctor: '/doctor/login', admin: '/admin/login', organization: '/organization/login' };
+const HOME = { patient: '/dashboard', doctor: '/doctor/dashboard', admin: '/admin/dashboard', organization: '/organization/dashboard' };
 
 export const PageLoader = () => (
   <div className="min-h-[60vh] flex items-center justify-center" role="status" aria-live="polite">

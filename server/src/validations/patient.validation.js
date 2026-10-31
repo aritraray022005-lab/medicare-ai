@@ -182,6 +182,41 @@ const bookAppointmentSchema = z.object({
             500,
             "Reason cannot exceed 500 characters"
         )
+        .optional(),
+
+    bookingType: z
+        .enum(["Independent", "Organization"])
+        .optional()
+        .default("Independent"),
+
+    organizationId: z
+        .string()
+        .regex(/^[0-9a-fA-F]{24}$/, "Invalid Organization ID")
+        .optional(),
+
+    roomId: z
+        .string()
+        .regex(/^[0-9a-fA-F]{24}$/, "Invalid Room ID")
+        .optional(),
+
+    roomBookingId: z
+        .string()
+        .regex(/^[0-9a-fA-F]{24}$/, "Invalid Room Booking ID")
+        .optional(),
+
+    durationMinutes: z
+        .coerce
+        .number()
+        .int()
+        .min(5, "Duration must be at least 5 minutes")
+        .max(240, "Duration cannot exceed 240 minutes")
+        .optional()
+        .default(30),
+
+    clientOffsetMinutes: z
+        .coerce
+        .number()
+        .int()
         .optional()
 });
 
@@ -196,7 +231,13 @@ const cancelAppointmentSchema = z.object({
         .regex(
             /^[0-9a-fA-F]{24}$/,
             "Invalid Appointment ID"
-        )
+        ),
+
+    reason: z
+        .string()
+        .trim()
+        .max(500, "Reason cannot exceed 500 characters")
+        .optional()
 });
 
 

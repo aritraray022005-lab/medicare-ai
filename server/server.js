@@ -14,8 +14,12 @@ require("./src/jobs/appointmentCron"); // Initialize cron jobs
 const patientRoutes = require("./src/routes/patient.routes");
 const doctorRoutes = require("./src/routes/doctor.routes");
 const adminRoutes = require("./src/routes/admin.routes");
+const organizationRoutes = require("./src/routes/organization.routes");
 const aiRoutes = require("./src/routes/ai.routes");
 const qaRoutes = require("./src/routes/qa.routes");
+const { defaultWorker } = require("./src/jobs/outboxWorker");
+const { defaultDurableWorker } = require("./src/jobs/durableJobWorker");
+const mongoose = require("mongoose");
 
 const morgan = require("morgan");
 const cors = require("cors");
@@ -116,9 +120,20 @@ app.get("/", (req, res) => {
 // ======================================================
 
 app.get("/api/health", (req, res) => {
-  res.status(200).json({
-    success: true,
-    status: "healthy",
+  const isDbConnected = mongoose.connection.readyState === 1;
+  const dbStatusMap = {
+    0: "disconnected",
+    1: "connected",
+    2: "connecting",
+    3: "disconnecting"
+  };
+  const databaseStatus = dbStatusMap[mongoose.connection.readyState] || "unknown";
+
+  const statusCode = isDbConnected ? 200 : 503;
+  return res.status(statusCode).json({
+    success: isDbConnected,
+    status: isDbConnected ? "healthy" : "unhealthy",
+    database: databaseStatus,
     service: "medicare-server",
     timestamp: new Date().toISOString()
   });
@@ -133,6 +148,8 @@ app.use("/api/patients", patientRoutes);
 app.use("/api/doctors", doctorRoutes);
 
 app.use("/api/admin", adminRoutes);
+
+app.use("/api/organizations", organizationRoutes);
 
 app.use("/api/ai", aiRoutes);
 
@@ -152,10 +169,29 @@ app.get("/check/:status", (req, res) => {
 // DATABASE CONNECTION + SERVER START
 // ======================================================
 
+let server = null;
+
 connectDb()
   .then(() => {
-    app.listen(config.PORT, () => {
+    server = app.listen(config.PORT, () => {
       console.log(`Server Running on port ${config.PORT}`);
+
+      // Start background workers with isTickBusy protection
+      defaultWorker.startPolling(5000);
+      defaultDurableWorker.startPolling(5000);
+    });
+
+    // Handle MongoDB disconnection and reconnection for workers
+    mongoose.connection.on("disconnected", () => {
+      console.warn("MongoDB disconnected. Pausing workers...");
+      defaultWorker.stopPolling();
+      defaultDurableWorker.stopPolling();
+    });
+
+    mongoose.connection.on("reconnected", () => {
+      console.log("MongoDB reconnected. Resuming workers...");
+      defaultWorker.startPolling(5000);
+      defaultDurableWorker.startPolling(5000);
     });
   })
   .catch((error) => {
@@ -164,3 +200,32 @@ connectDb()
       error.message
     );
   });
+
+// Graceful shutdown handling
+let isShuttingDown = false;
+const gracefulShutdown = async (signal) => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log(`Received ${signal}. Gracefully stopping background workers and HTTP server...`);
+  try {
+    // Wait for in-flight ticks to settle (up to 10 seconds)
+    await Promise.allSettled([
+      defaultWorker.shutdown(10000),
+      defaultDurableWorker.shutdown(10000)
+    ]);
+  } catch (err) {
+    console.error("Error during background workers graceful shutdown:", err.message);
+  }
+
+  if (server) {
+    server.close(() => {
+      console.log("HTTP server closed.");
+      process.exit(0);
+    });
+  } else {
+    process.exit(0);
+  }
+};
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));

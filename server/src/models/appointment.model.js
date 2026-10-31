@@ -74,6 +74,102 @@ const appointmentSchema = new mongoose.Schema(
                 "Expired"
             ],
             default: "Pending"
+        },
+
+
+        // =========================
+        // ORGANIZATION MANAGEMENT & VENUE
+        // =========================
+
+        bookingType: {
+            type: String,
+            enum: ["Independent", "Organization"],
+            default: "Independent"
+        },
+
+        organization: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Organization",
+            default: null
+        },
+
+        room: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Room",
+            default: null
+        },
+
+        roomSlot: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "RoomSlot",
+            default: null
+        },
+
+        roomBooking: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "RoomBooking",
+            default: null
+        },
+
+
+        // =========================
+        // CANONICAL UTC SCHEDULE INTERVAL
+        // =========================
+
+        startDateTime: {
+            type: Date,
+            default: null
+        },
+
+        endDateTime: {
+            type: Date,
+            default: null
+        },
+
+        timezone: {
+            type: String,
+            default: null
+        },
+
+        isTimezoneUnconfirmed: {
+            type: Boolean,
+            default: false
+        },
+
+        isDurationEstimated: {
+            type: Boolean,
+            default: false
+        },
+
+
+        // =========================
+        // CANCELLATION AUDIT
+        // =========================
+
+        cancellationReason: {
+            type: String,
+            default: null
+        },
+
+        cancelledBy: {
+            type: String,
+            enum: ["Patient", "Doctor", "Admin", "System"],
+            default: null
+        },
+
+        cancelledAt: {
+            type: Date,
+            default: null
+        },
+
+
+        // =========================
+        // MIGRATION TRACKING
+        // =========================
+
+        migrationBatchId: {
+            type: String,
+            default: null
         }
     },
 
@@ -100,6 +196,65 @@ appointmentSchema.index(
                 $in: ["Pending", "Confirmed"]
             }
         }
+    }
+);
+
+
+// ========================================
+// CANONICAL UTC SCHEDULE INTERVAL INDEX
+// ========================================
+
+appointmentSchema.index(
+    {
+        doctor: 1,
+        startDateTime: 1,
+        endDateTime: 1
+    },
+    {
+        partialFilterExpression: {
+            startDateTime: { $exists: true },
+            status: {
+                $in: ["Pending", "Confirmed"]
+            }
+        }
+    }
+);
+
+
+// ========================================
+// ROOM BOOKING LOOKUP INDEX
+// ========================================
+
+appointmentSchema.index(
+    {
+        roomBooking: 1
+    },
+    {
+        sparse: true
+    }
+);
+
+
+// ========================================
+// PATIENT APPOINTMENTS INDEX
+// ========================================
+
+appointmentSchema.index(
+    {
+        patient: 1,
+        status: 1
+    }
+);
+
+
+// ========================================
+// ORGANIZATION APPOINTMENTS INDEX
+// ========================================
+
+appointmentSchema.index(
+    {
+        organization: 1,
+        status: 1
     }
 );
 

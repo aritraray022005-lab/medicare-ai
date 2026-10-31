@@ -1,8 +1,12 @@
 const Doctor = require("../models/doctor.model");
+const Patient = require("../models/patient.model");
 const jwt = require('jsonwebtoken');
 const appointmentModel = require("../models/appointment.model");
 const config = require("../config/config");
 const OTPutil = require("../util/otp.util");
+const { executeTransactionWithRetry } = require("../util/transaction.util");
+const { acquireScheduleLocks } = require("../util/lock.util");
+const { queueNotification } = require("../services/outbox.service");
 
 // Auth
 //register
@@ -780,19 +784,25 @@ const changePassword = async (req, res) => {
 // view all appointments
 const viewAppointment = async (req, res) => {
     try {
-        const doctorId = req.userDetails?.id;
+        const doctorId = req.userDetails?.id || req.userDetails?._id;
 
         if (!doctorId) {
             return res.status(401).json({
                 "status": "failed",
                 "msg": "Unauthorized access."
-            })
+            });
         }
 
-        const appointments = await appointmentModel.find({ doctor: doctorId }).populate("patient", "-password");
+        const appointments = await appointmentModel.find({ doctor: doctorId })
+            .populate("patient", "-password")
+            .populate("organization", "name email phone address timezone")
+            .populate("room", "roomNumber floor department")
+            .populate("roomSlot", "date localStartTime localEndTime status")
+            .populate("roomBooking", "startDateTime endDateTime status")
+            .sort({ date: -1, time: -1 });
 
         if (!appointments || appointments.length === 0) {
-            return res.status(404).json({
+            return res.status(200).json({
                 "status": "success",
                 "msg": "No appointments found for this doctor.",
                 "data": []
@@ -805,21 +815,16 @@ const viewAppointment = async (req, res) => {
             "data": appointments
         });
 
-
-
     } catch (error) {
         res.status(500).json({
             message: error.message
         });
     }
-}
-
-
-// 
+};
 
 const updateAppointmentStatus = async (req, res) => {
     try {
-        const doctorId = req.userDetails?.id;
+        const doctorId = req.userDetails?.id || req.userDetails?._id;
 
         if (!doctorId) {
             return res.status(401).json({
@@ -829,30 +834,92 @@ const updateAppointmentStatus = async (req, res) => {
         }
 
         const { appointmentId, status } = req.body;
+        const normalizedStatus = status.toLowerCase() === "confirmed" ? "Confirmed" : "Cancelled";
 
-        const updatedAppointment = await appointmentModel.findOneAndUpdate(
-            {
-                _id: appointmentId,
-                doctor: doctorId
-            },
-            {
-                status: status
-            },
-            {
-                returnDocument: "after"
-            }
-        );
+        const existingAppt = await appointmentModel.findOne({
+            _id: appointmentId,
+            doctor: doctorId
+        });
 
-        if (!updatedAppointment) {
+        if (!existingAppt) {
             return res.status(404).json({
                 status: "failed",
                 msg: "Appointment not found or you are not authorized to update it."
             });
         }
 
+        let updatedAppointment;
+
+        try {
+            await executeTransactionWithRetry(async (session) => {
+                // Acquire locks: Org (0) -> Room (1) -> Doctor (2)
+                await acquireScheduleLocks({
+                    organizationId: existingAppt.organization || null,
+                    roomId: existingAppt.room || null,
+                    doctorId,
+                    session
+                });
+
+                const appt = await appointmentModel.findOne({
+                    _id: appointmentId,
+                    doctor: doctorId
+                }).session(session);
+
+                if (!appt) {
+                    const err = new Error("Appointment not found inside transaction.");
+                    err.statusCode = 404;
+                    throw err;
+                }
+
+                appt.status = normalizedStatus;
+                if (normalizedStatus === "Cancelled") {
+                    appt.cancelledBy = "Doctor";
+                    appt.cancelledAt = new Date();
+                    appt.cancellationReason = "Cancelled by doctor";
+                }
+                await appt.save({ session });
+
+                updatedAppointment = appt;
+
+                // Queue outbox notification to patient
+                const patient = await Patient.findById(appt.patient).session(session);
+                const doctor = await Doctor.findById(doctorId).session(session);
+
+                if (patient) {
+                    const notifType = normalizedStatus === "Confirmed" ? "APPOINTMENT_CONFIRMED" : "APPOINTMENT_CANCELLED";
+                    await queueNotification(
+                        {
+                            recipientEmail: patient.email,
+                            type: notifType,
+                            payload: {
+                                patientName: patient.name,
+                                doctorName: doctor ? doctor.name : "Doctor",
+                                appointmentId: appt._id.toString(),
+                                date: appt.date instanceof Date ? appt.date.toISOString().split("T")[0] : String(appt.date),
+                                time: appt.time,
+                                reason: normalizedStatus === "Cancelled" ? "Cancelled by doctor" : undefined
+                            }
+                        },
+                        session
+                    );
+                }
+            });
+        } catch (txErr) {
+            if (txErr.statusCode) {
+                return res.status(txErr.statusCode).json({ status: "failed", msg: txErr.message });
+            }
+            if (txErr.message && txErr.message.includes("Database transaction unavailable")) {
+                return res.status(500).json({
+                    status: "failed",
+                    msg: "Database transaction failed: MongoDB replica set is required."
+                });
+            }
+            throw txErr;
+        }
+
         return res.status(200).json({
             status: "success",
-            msg: status === "confirmed"
+            msg: normalizedStatus === "Confirmed"
                 ? "Appointment confirmed successfully."
                 : "Appointment cancelled successfully.",
             data: updatedAppointment

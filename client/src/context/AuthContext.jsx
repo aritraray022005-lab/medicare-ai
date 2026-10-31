@@ -13,17 +13,18 @@ const probe = async (url) => {
 };
 
 export const AuthProvider = ({ children }) => {
-  const [session, setSession] = useState({ patient: false, doctor: false, admin: false });
+  const [session, setSession] = useState({ patient: false, doctor: false, admin: false, organization: false });
   const [loading, setLoading] = useState(true);
 
   // Re-check every role's cookie against the server. Call after login / logout.
   const refresh = useCallback(async () => {
-    const [patient, doctor, admin] = await Promise.all([
+    const [patient, doctor, admin, organization] = await Promise.all([
       probe('/api/patients/profile'),
       probe('/api/doctors/profile'),
       probe('/api/admin/auth/me'),
+      probe('/api/organizations/auth/me'),
     ]);
-    setSession({ patient, doctor, admin });
+    setSession({ patient, doctor, admin, organization });
     setLoading(false);
   }, []);
 

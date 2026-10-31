@@ -19,6 +19,11 @@ import ExploreQA from './pages/ExploreQA';
 import AskQuestion from './pages/AskQuestion';
 import QuestionDetails from './pages/QuestionDetails';
 import DoctorQA from './pages/DoctorQA';
+import OrganizationLanding from './pages/OrganizationLanding';
+import OrganizationLogin from './pages/OrganizationLogin';
+import OrganizationRegister from './pages/OrganizationRegister';
+import OrganizationVerifyEmail from './pages/OrganizationVerifyEmail';
+import OrganizationDashboard from './pages/OrganizationDashboard';
 import Footer from './components/Footer';
 import axios from 'axios';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -30,6 +35,7 @@ const LOGOUT_URL = {
   patient: '/api/patients/auth/logout',
   doctor: '/api/doctors/auth/logout',
   admin: '/api/admin/auth/logout',
+  organization: '/api/organizations/auth/logout',
 };
 
 // The nav only ever lists links the current visitor can actually open.
@@ -37,7 +43,13 @@ const AppNavbar = () => {
   const { pathname } = useLocation();
   const auth = useAuth();
 
-  const section = pathname.startsWith('/admin') ? 'admin' : pathname.startsWith('/doctor') ? 'doctor' : 'patient';
+  const section = pathname.startsWith('/admin')
+    ? 'admin'
+    : pathname.startsWith('/doctor')
+    ? 'doctor'
+    : pathname.startsWith('/organization')
+    ? 'organization'
+    : 'patient';
 
   let links = [];
   let actionButton = null;
@@ -55,11 +67,21 @@ const AppNavbar = () => {
       links.push({ to: '/doctor/login', label: 'Doctor Login' });
       actionButton = { to: '/doctor/register', label: 'Join as Doctor' };
     }
+  } else if (section === 'organization') {
+    homePath = '/organization';
+    links = [{ to: '/organization', label: 'For Facilities', end: true }];
+    if (auth.organization) {
+      links.push({ to: '/organization/dashboard', label: 'Dashboard' });
+    } else {
+      links.push({ to: '/organization/login', label: 'Facility Login' });
+      actionButton = { to: '/organization/register', label: 'Register Facility' };
+    }
   } else {
     links = [
       { to: '/', label: 'Home', end: true },
       { to: '/chat', label: 'AI Assistant' },
       { to: '/questions', label: 'Health Q&A' },
+      { to: '/organization', label: 'Facilities' },
     ];
     if (auth.patient) {
       links.splice(2, 0, { to: '/symptom-checker', label: 'Symptom Checker' });
@@ -86,7 +108,15 @@ const AppNavbar = () => {
       actionButton={actionButton}
       homePath={homePath}
       onLogout={signedIn ? handleLogout : null}
-      logoutTo={section === 'admin' ? '/admin/login' : section === 'doctor' ? '/doctor' : '/'}
+      logoutTo={
+        section === 'admin'
+          ? '/admin/login'
+          : section === 'doctor'
+          ? '/doctor'
+          : section === 'organization'
+          ? '/organization'
+          : '/'
+      }
     />
   );
 };
@@ -106,6 +136,7 @@ function App() {
               <Route path="/questions" element={<ExploreQA />} />
               <Route path="/questions/:id" element={<QuestionDetails />} />
               <Route path="/doctor" element={<DoctorLanding />} />
+              <Route path="/organization" element={<OrganizationLanding />} />
 
               {/* Guest only (signed-in users are redirected to their dashboard) */}
               <Route path="/login" element={<GuestRoute role="patient"><Login /></GuestRoute>} />
@@ -114,6 +145,9 @@ function App() {
               <Route path="/doctor/login" element={<GuestRoute role="doctor"><DoctorLogin /></GuestRoute>} />
               <Route path="/doctor/register" element={<GuestRoute role="doctor"><DoctorRegister /></GuestRoute>} />
               <Route path="/doctor/forgot-password" element={<DoctorForgotPassword />} />
+              <Route path="/organization/login" element={<GuestRoute role="organization"><OrganizationLogin /></GuestRoute>} />
+              <Route path="/organization/register" element={<GuestRoute role="organization"><OrganizationRegister /></GuestRoute>} />
+              <Route path="/organization/verify-email" element={<OrganizationVerifyEmail />} />
               <Route path="/admin/login" element={<GuestRoute role="admin"><AdminLogin /></GuestRoute>} />
 
               {/* Patient only */}
@@ -124,6 +158,9 @@ function App() {
               {/* Doctor only */}
               <Route path="/doctor/dashboard" element={<ProtectedRoute role="doctor"><DoctorDashboard /></ProtectedRoute>} />
               <Route path="/doctor/qa" element={<ProtectedRoute role="doctor"><DoctorQA /></ProtectedRoute>} />
+
+              {/* Organization only */}
+              <Route path="/organization/dashboard" element={<ProtectedRoute role="organization"><OrganizationDashboard /></ProtectedRoute>} />
 
               {/* Admin only */}
               <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
