@@ -1,6 +1,6 @@
 services:
   mongodb:
-    image: mongo:8
+    image: mongo:7.0
     command: ["--replSet", "rs0", "--bind_ip_all"]
     ports:
       - "27017:27017"
@@ -35,3 +35,9 @@ services:
         condition: service_healthy
     environment:
       MONGO_URI: mongodb://mongodb:27017/medicare_ci?replicaSet=rs0
+      RUN_INTEGRATION_TESTS: "true"
+    volumes:
+      - ./server/test:/app/test:ro
+      - ./server/src:/app/src:ro
+
+
