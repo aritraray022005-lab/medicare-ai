@@ -117,4 +117,83 @@ router.patch(
     doctorController.updateAppointmentStatus
 );
 
+// ==================== AFFILIATION (PHASE 4) ====================
+
+const affiliationController = require("../controller/affiliation.controller");
+const affiliationValidation = require("../validations/affiliation.validation");
+
+router.get(
+    "/organizations",
+    doctorAuthMiddleware,
+    affiliationController.getVerifiedOrganizations
+);
+
+router.post(
+    "/affiliations",
+    doctorAuthMiddleware,
+    ValidationMiddleware(affiliationValidation.requestAffiliationSchema),
+    affiliationController.requestAffiliation
+);
+
+router.get(
+    "/affiliations",
+    doctorAuthMiddleware,
+    affiliationController.getDoctorAffiliations
+);
+
+router.patch(
+    "/affiliations/:id/withdraw",
+    doctorAuthMiddleware,
+    affiliationController.withdrawAffiliationRequest
+);
+
+// ==================== ROOM BOOKINGS & FCFS ALLOCATION (PHASE 5) ====================
+
+const roomController = require("../controller/room.controller");
+const roomValidation = require("../validations/room.validation");
+
+router.get(
+    "/rooms/available",
+    doctorAuthMiddleware,
+    roomController.getAvailableRoomsForDoctor
+);
+
+router.get(
+    "/rooms/slots",
+    doctorAuthMiddleware,
+    roomController.getAvailableSlotsForDoctor
+);
+
+router.post(
+    "/rooms/requests",
+    doctorAuthMiddleware,
+    ValidationMiddleware(roomValidation.requestRoomBookingSchema),
+    roomController.requestRoomBooking
+);
+
+router.get(
+    "/rooms/requests",
+    doctorAuthMiddleware,
+    roomController.getDoctorRoomRequests
+);
+
+router.patch(
+    "/rooms/requests/:id/withdraw",
+    doctorAuthMiddleware,
+    roomController.withdrawRoomBookingRequest
+);
+
+router.get(
+    "/rooms/bookings",
+    doctorAuthMiddleware,
+    roomController.getDoctorRoomBookings
+);
+
+router.patch(
+    "/rooms/bookings/:id/cancel",
+    doctorAuthMiddleware,
+    ValidationMiddleware(roomValidation.cancelRoomBookingSchema),
+    roomController.cancelRoomBooking
+);
+
 module.exports = router;

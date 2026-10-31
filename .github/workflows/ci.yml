@@ -41,11 +41,19 @@ jobs:
         working-directory: server
         run: npm ci
 
+      - name: Run backend tests
+        working-directory: server
+        env:
+          MONGO_URI: mongodb://127.0.0.1:27017/medicare_test
+          PORT: 5000
+          JWT_TOKEN_SECRET: ci-test-secret
+        run: npm test
+
       - name: Create CI environment file
         shell: bash
         run: |
           cat > server/.env <<'EOF'
-          MONGO_URI=mongodb://mongodb:27017/medicare_ci
+          MONGO_URI=mongodb://mongodb:27017/medicare_ci?replicaSet=rs0
           PORT=5000
           JWT_TOKEN_SECRET=ci-test-secret
           EMAIL_ID=ci@example.com
@@ -53,27 +61,20 @@ jobs:
           GEMINI_API_KEY=ci-test-key
           EOF
 
-      - name: Create CI Docker Compose override
-        shell: bash
+      - name: Configure runner hosts for MongoDB replica set
         run: |
-          cat > docker-compose.ci.yml <<'EOF'
-          services:
+          echo "127.0.0.1 mongodb" | sudo tee -a /etc/hosts
 
-            mongodb:
-              image: mongo:8
-              healthcheck:
-                test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-                interval: 5s
-                timeout: 5s
-                retries: 10
-
-            server:
-              depends_on:
-                mongodb:
-                  condition: service_healthy
-              environment:
-                MONGO_URI: mongodb://mongodb:27017/medicare_ci
-          EOF
+      - name: Validate Docker Compose configuration
+        run: |
+          test -f docker-compose.ci.yml
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml config -q
+          if docker compose -f docker-compose.yml -f docker-compose.ci.yml config | grep -q 'MONGO_URI: mongodb://mongodb:27017/'; then
+            echo "MONGO_URI starts with mongodb://mongodb:27017/: YES"
+          else
+            echo "MONGO_URI starts with mongodb://mongodb:27017/: NO"
+            exit 1
+          fi
 
       - name: Build Docker images
         run: |
@@ -88,6 +89,53 @@ jobs:
             -f docker-compose.yml \
             -f docker-compose.ci.yml \
             up -d
+
+      - name: Verify server MONGO_URI configuration
+        run: |
+          if docker inspect --format='{{range .Config.Env}}{{println .}}{{end}}' medicare-server | grep -q '^MONGO_URI=mongodb://mongodb:27017/'; then
+            echo "Container MONGO_URI starts with mongodb://mongodb:27017/: YES"
+          else
+            echo "Container MONGO_URI starts with mongodb://mongodb:27017/: NO"
+            exit 1
+          fi
+
+      - name: Verify MongoDB replica set is PRIMARY
+        shell: bash
+        run: |
+          echo "Waiting for MongoDB replica set rs0 to become PRIMARY..."
+          for i in {1..30}; do
+            STATUS=$(docker compose \
+              -f docker-compose.yml \
+              -f docker-compose.ci.yml \
+              exec -T mongodb mongosh --port 27017 --quiet --eval "
+                try {
+                  var s = rs.status();
+                  if (s.ok === 1 && s.members && s.members[0] && s.members[0].stateStr === 'PRIMARY') {
+                    print('PRIMARY');
+                  } else {
+                    print('NOT_YET_PRIMARY');
+                  }
+                } catch (e) {
+                  print('NOT_INITIALIZED');
+                }
+              " 2>/dev/null || true)
+
+            echo "MongoDB replica set state: $STATUS"
+
+            if [[ "$STATUS" == *"PRIMARY"* && "$STATUS" != *"NOT"* ]]; then
+              echo "MongoDB replica set rs0 is confirmed PRIMARY."
+              break
+            fi
+
+            sleep 2
+          done
+
+      - name: Run replica set integration tests
+        working-directory: server
+        env:
+          MONGO_URI: mongodb://mongodb:27017/medicare_ci?replicaSet=rs0
+          RUN_INTEGRATION_TESTS: "true"
+        run: npm run test:integration
 
       - name: Wait for backend health
         shell: bash
@@ -132,7 +180,10 @@ jobs:
 
       - name: Test backend health endpoint
         run: |
-          curl --fail http://localhost:5000/api/health
+          RESPONSE=$(curl --fail --silent http://localhost:5000/api/health)
+          echo "Health response: $RESPONSE"
+          echo "$RESPONSE" | grep -q '"status":"healthy"'
+          echo "$RESPONSE" | grep -q '"database":"connected"'
 
       - name: Test frontend to backend proxy
         run: |

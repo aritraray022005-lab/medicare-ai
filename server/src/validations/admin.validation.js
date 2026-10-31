@@ -114,6 +114,24 @@ const patientBlockSchema = z.object({
 });
 
 
+const organizationVerificationSchema = z.object({
+    organizationId: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid Organization ID"),
+    isVerified: z.boolean(),
+    reason: z.string().trim().optional()
+});
+
+const organizationBlockSchema = z.object({
+    organizationId: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid Organization ID"),
+    isBlocked: z.boolean(),
+    reason: z.string().trim().optional()
+});
+
+const resolveHistoricalAppointmentSchema = z.object({
+    roomBookingId: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid Room Booking ID"),
+    reason: z.string().trim().max(500).optional()
+});
+
+
 // =========================
 // EXPORT
 // =========================
@@ -129,6 +147,9 @@ module.exports = {
 
     doctorVerificationSchema,
     doctorBlockSchema,
-    patientBlockSchema
+    patientBlockSchema,
+    organizationVerificationSchema,
+    organizationBlockSchema,
+    resolveHistoricalAppointmentSchema
 
 };

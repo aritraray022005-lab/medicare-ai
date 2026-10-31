@@ -100,14 +100,33 @@ router.post(
 
 // ==================== APPOINTMENTS ====================
 
-// Get verified doctors
+// Get verified doctors (independent)
 router.get(
     "/appointment/doctors",
     authPatientMiddleware,
     patientcontroller.getDoctors
 );
 
-// Book appointment
+// Organization Discovery (Phase 6)
+router.get(
+    "/organizations",
+    authPatientMiddleware,
+    patientcontroller.getApprovedOrganizations
+);
+
+router.get(
+    "/organizations/:organizationId/doctors",
+    authPatientMiddleware,
+    patientcontroller.getOrganizationDoctors
+);
+
+router.get(
+    "/organizations/:organizationId/availability",
+    authPatientMiddleware,
+    patientcontroller.getOrganizationAppointmentAvailability
+);
+
+// Book appointment (Independent or Organization)
 router.post(
     "/appointment",
     authPatientMiddleware,

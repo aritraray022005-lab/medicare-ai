@@ -239,6 +239,15 @@ const doctorSchema = new mongoose.Schema(
         },
 
         // =========================
+        // SCHEDULE VERSION (CONCURRENCY LOCK)
+        // =========================
+
+        scheduleVersion: {
+            type: Number,
+            default: 0
+        },
+
+        // =========================
         // PASSWORD RESET
         // =========================
 

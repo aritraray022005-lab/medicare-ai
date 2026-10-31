@@ -8,6 +8,10 @@ RUN npm ci --omit=dev
 
 COPY . .
 
+RUN mkdir -p uploads src/uploads && chown -R node:node /app
+
+USER node
+
 EXPOSE 5000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

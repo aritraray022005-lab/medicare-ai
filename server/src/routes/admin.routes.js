@@ -75,6 +75,34 @@ router.patch(
     admincontroller.updatePatientBlockStatus
 );
 
+// ==================== ORGANIZATION POWERS ====================
+
+router.get(
+    "/organizations",
+    adminAuthMiddleware,
+    admincontroller.getOrganizations
+);
+
+router.get(
+    "/organizations/:id",
+    adminAuthMiddleware,
+    admincontroller.getOrganizationById
+);
+
+router.patch(
+    "/organization/verification",
+    adminAuthMiddleware,
+    ValidationMiddleware(adminValidation.organizationVerificationSchema),
+    admincontroller.updateOrganizationVerification
+);
+
+router.patch(
+    "/organization/block",
+    adminAuthMiddleware,
+    ValidationMiddleware(adminValidation.organizationBlockSchema),
+    admincontroller.updateOrganizationBlockStatus
+);
+
 
 // ==================== PASSWORD RESET ====================
 
@@ -96,5 +124,37 @@ router.post(
     admincontroller.changePassword
 );
 
+// ==================== AFFILIATION RESOLUTION (PHASE 4) ====================
+
+const affiliationController = require("../controller/affiliation.controller");
+const affiliationValidation = require("../validations/affiliation.validation");
+
+router.get(
+    "/affiliations",
+    adminAuthMiddleware,
+    affiliationController.getAdminAffiliations
+);
+
+router.get(
+    "/affiliations/:id",
+    adminAuthMiddleware,
+    affiliationController.getAdminAffiliationById
+);
+
+router.patch(
+    "/affiliations/:id/resolve",
+    adminAuthMiddleware,
+    ValidationMiddleware(affiliationValidation.adminResolveAffiliationSchema),
+    affiliationController.resolveAffiliation
+);
+
+// ==================== HISTORICAL APPOINTMENT RESOLUTION (PHASE 6) ====================
+
+router.patch(
+    "/appointments/:id/resolve-historical",
+    adminAuthMiddleware,
+    ValidationMiddleware(adminValidation.resolveHistoricalAppointmentSchema),
+    admincontroller.resolveHistoricalAppointment
+);
 
 module.exports = router;
