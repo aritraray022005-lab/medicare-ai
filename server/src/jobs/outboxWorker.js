@@ -28,31 +28,24 @@ class OutboxWorker {
      * @returns {Promise<number>} Number of swept records
      */
     async recoverAndSweepDeadLetters() {
+        const now = new Date();
         const result = await OutboxNotification.updateMany(
             {
                 retryCount: { $gte: this.maxRetries },
                 $or: [
                     { status: "FAILED" },
-                    { status: "PROCESSING", $expr: { $lte: ["$lockedUntil", "$$NOW"] } }
+                    { status: "PROCESSING", lockedUntil: { $lte: now } }
                 ]
             },
-            [
-                {
-                    $set: {
-                        status: "DEAD_LETTER",
-                        lockedUntil: null,
-                        leaseToken: null,
-                        deadLetteredAt: "$$NOW",
-                        lastError: {
-                            $concat: [
-                                "Max retries exhausted (",
-                                { $toString: "$retryCount" },
-                                "). Transitioned by dead-letter sweep."
-                            ]
-                        }
-                    }
+            {
+                $set: {
+                    status: "DEAD_LETTER",
+                    lockedUntil: null,
+                    leaseToken: null,
+                    deadLetteredAt: now,
+                    lastError: "Max retries exhausted. Transitioned by dead-letter sweep."
                 }
-            ]
+            }
         );
 
         return result.modifiedCount || 0;
@@ -68,6 +61,8 @@ class OutboxWorker {
         // Run dead-letter sweep prior to claiming
         await this.recoverAndSweepDeadLetters();
 
+        const now = new Date();
+        const lockedUntil = new Date(now.getTime() + this.leaseDurationMs);
         const leaseToken = crypto.randomUUID();
 
         const job = await OutboxNotification.findOneAndUpdate(
@@ -75,23 +70,21 @@ class OutboxWorker {
                 retryCount: { $lt: this.maxRetries },
                 $or: [
                     { status: "PENDING" },
-                    { status: "FAILED", $expr: { $lte: ["$nextAttemptAt", "$$NOW"] } },
-                    { status: "PROCESSING", $expr: { $lte: ["$lockedUntil", "$$NOW"] } } // Expired lease recovery
+                    { status: "FAILED", nextAttemptAt: { $lte: now } },
+                    { status: "PROCESSING", lockedUntil: { $lte: now } } // Expired lease recovery
                 ]
             },
-            [
-                {
-                    $set: {
-                        status: "PROCESSING",
-                        leaseToken: leaseToken,
-                        workerId: this.workerId,
-                        lastAttemptAt: "$$NOW",
-                        lockedUntil: { $add: ["$$NOW", this.leaseDurationMs] },
-                        retryCount: { $add: ["$retryCount", 1] }
-                    }
-                }
-            ],
-            { sort: { createdAt: 1 }, new: true }
+            {
+                $set: {
+                    status: "PROCESSING",
+                    leaseToken: leaseToken,
+                    workerId: this.workerId,
+                    lastAttemptAt: now,
+                    lockedUntil: lockedUntil
+                },
+                $inc: { retryCount: 1 }
+            },
+            { sort: { createdAt: 1 }, returnDocument: "after" }
         );
 
         if (!job) {
@@ -113,20 +106,19 @@ class OutboxWorker {
     startHeartbeat(jobId, leaseToken, abortController) {
         return setInterval(async () => {
             try {
+                const now = new Date();
                 const renewed = await OutboxNotification.updateOne(
                     {
                         _id: jobId,
                         leaseToken: leaseToken,
                         status: "PROCESSING",
-                        $expr: { $gte: ["$lockedUntil", "$$NOW"] }
+                        lockedUntil: { $gte: now }
                     },
-                    [
-                        {
-                            $set: {
-                                lockedUntil: { $add: ["$$NOW", this.leaseDurationMs] }
-                            }
+                    {
+                        $set: {
+                            lockedUntil: new Date(now.getTime() + this.leaseDurationMs)
                         }
-                    ]
+                    }
                 );
 
                 if (renewed.matchedCount === 0) {
@@ -153,25 +145,26 @@ class OutboxWorker {
      * @returns {Promise<boolean>} True if completed successfully
      */
     async completeJob(jobId, leaseToken) {
+        const now = new Date();
+        const expireAt = new Date(now.getTime() + this.retentionMs);
+
         const result = await OutboxNotification.updateOne(
             {
                 _id: jobId,
                 leaseToken: leaseToken,
                 status: "PROCESSING",
-                $expr: { $gte: ["$lockedUntil", "$$NOW"] }
+                lockedUntil: { $gte: now }
             },
-            [
-                {
-                    $set: {
-                        status: "SENT",
-                        sentAt: "$$NOW",
-                        expireAt: { $add: ["$$NOW", this.retentionMs] },
-                        lockedUntil: null,
-                        leaseToken: null,
-                        lastError: null
-                    }
+            {
+                $set: {
+                    status: "SENT",
+                    sentAt: now,
+                    expireAt: expireAt,
+                    lockedUntil: null,
+                    leaseToken: null,
+                    lastError: null
                 }
-            ]
+            }
         );
 
         return result.matchedCount === 1;
@@ -189,6 +182,7 @@ class OutboxWorker {
      */
     async failJob(jobId, leaseToken, claimedRetryCount, error) {
         const errorMessage = error && error.message ? error.message : String(error);
+        const now = new Date();
 
         if (claimedRetryCount >= this.maxRetries) {
             const deadLetterResult = await OutboxNotification.updateOne(
@@ -196,44 +190,41 @@ class OutboxWorker {
                     _id: jobId,
                     leaseToken: leaseToken,
                     status: "PROCESSING",
-                    $expr: { $gte: ["$lockedUntil", "$$NOW"] }
+                    lockedUntil: { $gte: now }
                 },
-                [
-                    {
-                        $set: {
-                            status: "DEAD_LETTER",
-                            lockedUntil: null,
-                            leaseToken: null,
-                            deadLetteredAt: "$$NOW",
-                            lastError: `Max retries exhausted (${claimedRetryCount}): ${errorMessage}`
-                        }
+                {
+                    $set: {
+                        status: "DEAD_LETTER",
+                        lockedUntil: null,
+                        leaseToken: null,
+                        deadLetteredAt: now,
+                        lastError: `Max retries exhausted (${claimedRetryCount}): ${errorMessage}`
                     }
-                ]
+                }
             );
             return deadLetterResult.matchedCount === 1;
         }
 
         // Exponential backoff: 5s * 2^(retryCount - 1)
         const backoffMs = this.baseBackoffMs * Math.pow(2, Math.max(0, claimedRetryCount - 1));
+        const nextAttemptAt = new Date(now.getTime() + backoffMs);
 
         const failResult = await OutboxNotification.updateOne(
             {
                 _id: jobId,
                 leaseToken: leaseToken,
                 status: "PROCESSING",
-                $expr: { $gte: ["$lockedUntil", "$$NOW"] }
+                lockedUntil: { $gte: now }
             },
-            [
-                {
-                    $set: {
-                        status: "FAILED",
-                        nextAttemptAt: { $add: ["$$NOW", backoffMs] },
-                        lockedUntil: null,
-                        leaseToken: null,
-                        lastError: errorMessage
-                    }
+            {
+                $set: {
+                    status: "FAILED",
+                    nextAttemptAt: nextAttemptAt,
+                    lockedUntil: null,
+                    leaseToken: null,
+                    lastError: errorMessage
                 }
-            ]
+            }
         );
 
         return failResult.matchedCount === 1;

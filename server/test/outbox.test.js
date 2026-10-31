@@ -368,6 +368,108 @@ async function runAsyncTest(name, fn) {
         worker.stopPolling();
     });
 
+    // 16. Regression: OutboxWorker claimNextJob and update methods use standard MongoDB update objects without updatePipeline MongooseError
+    await runAsyncTest("Regression: OutboxWorker claimNextJob and update methods use standard update objects without updatePipeline MongooseError", async () => {
+        // A. Verify reproduction with array
+        let reproducedError = null;
+        try {
+            OutboxNotification.findOneAndUpdate(
+                { status: "PENDING" },
+                [{ $set: { status: "PROCESSING" } }],
+                { new: true }
+            );
+        } catch (err) {
+            reproducedError = err;
+        }
+        assert(reproducedError, "Passing an array to findOneAndUpdate without updatePipeline must reproduce the MongooseError");
+        assert(reproducedError.message.includes("Cannot pass an array to query updates unless the `updatePipeline` option is set."));
+
+        // B. Verify OutboxWorker.claimNextJob passes standard update object and returnDocument: "after"
+        const worker = new OutboxWorker();
+        let capturedFilter = null;
+        let capturedUpdate = null;
+        let capturedOptions = null;
+
+        const origFindOneAndUpdate = OutboxNotification.findOneAndUpdate;
+        const origUpdateMany = OutboxNotification.updateMany;
+        const origUpdateOne = OutboxNotification.updateOne;
+
+        try {
+            // Mock recoverAndSweepDeadLetters' updateMany
+            let swept = false;
+            OutboxNotification.updateMany = async (filter, update, options) => {
+                assert.strictEqual(Array.isArray(update), false, "recoverAndSweepDeadLetters must not pass an array");
+                assert(update.$set, "recoverAndSweepDeadLetters must use $set");
+                swept = true;
+                return { modifiedCount: 0 };
+            };
+
+            // Mock findOneAndUpdate for claimNextJob
+            OutboxNotification.findOneAndUpdate = async (filter, update, options) => {
+                capturedFilter = filter;
+                capturedUpdate = update;
+                capturedOptions = options;
+                return {
+                    _id: new mongoose.Types.ObjectId(),
+                    status: "PROCESSING",
+                    workerId: worker.workerId,
+                    retryCount: 1
+                };
+            };
+
+            const claimResult = await worker.claimNextJob();
+            assert(claimResult.job, "Job must be returned");
+            assert(claimResult.leaseToken, "leaseToken must be generated");
+            assert.strictEqual(swept, true, "Dead-letter sweep must be invoked");
+
+            // Assert captured query structure
+            assert.strictEqual(Array.isArray(capturedUpdate), false, "claimNextJob update must be an object, NOT an array");
+            assert(capturedUpdate.$set, "claimNextJob update must contain $set");
+            assert.strictEqual(capturedUpdate.$set.status, "PROCESSING");
+            assert.strictEqual(capturedUpdate.$set.workerId, worker.workerId);
+            assert.strictEqual(capturedUpdate.$set.leaseToken, claimResult.leaseToken);
+            assert(capturedUpdate.$set.lastAttemptAt instanceof Date, "lastAttemptAt must be a Date");
+            assert(capturedUpdate.$set.lockedUntil instanceof Date, "lockedUntil must be a Date");
+            assert.strictEqual(capturedUpdate.$inc.retryCount, 1, "retryCount must be atomically incremented by $inc");
+
+            assert.strictEqual(capturedOptions.returnDocument, "after", "options must specify returnDocument: 'after'");
+            assert.strictEqual(capturedOptions.new, undefined, "options must not use deprecated new: true");
+            assert.strictEqual(capturedOptions.sort.createdAt, 1, "options must sort by createdAt: 1 (FIFO)");
+
+            // C. Verify completeJob passes standard update object
+            let completeUpdated = false;
+            OutboxNotification.updateOne = async (filter, update) => {
+                assert.strictEqual(Array.isArray(update), false, "completeJob update must be an object, NOT an array");
+                assert.strictEqual(update.$set.status, "SENT");
+                assert(update.$set.sentAt instanceof Date);
+                assert(update.$set.expireAt instanceof Date);
+                completeUpdated = true;
+                return { matchedCount: 1 };
+            };
+            const completed = await worker.completeJob(claimResult.job._id, claimResult.leaseToken);
+            assert.strictEqual(completed, true);
+            assert.strictEqual(completeUpdated, true);
+
+            // D. Verify failJob passes standard update object
+            let failUpdated = false;
+            OutboxNotification.updateOne = async (filter, update) => {
+                assert.strictEqual(Array.isArray(update), false, "failJob update must be an object, NOT an array");
+                assert.strictEqual(update.$set.status, "FAILED");
+                assert(update.$set.nextAttemptAt instanceof Date);
+                failUpdated = true;
+                return { matchedCount: 1 };
+            };
+            const failed = await worker.failJob(claimResult.job._id, claimResult.leaseToken, 1, new Error("Transient error"));
+            assert.strictEqual(failed, true);
+            assert.strictEqual(failUpdated, true);
+
+        } finally {
+            OutboxNotification.findOneAndUpdate = origFindOneAndUpdate;
+            OutboxNotification.updateMany = origUpdateMany;
+            OutboxNotification.updateOne = origUpdateOne;
+        }
+    });
+
     console.log(`\nTransactional Outbox Test Results: ${passed}/${total} passed.\n`);
     if (passed !== total) process.exit(1);
 })();
