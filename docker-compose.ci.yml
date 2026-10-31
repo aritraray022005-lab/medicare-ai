@@ -1,0 +1,37 @@
+services:
+  mongodb:
+    image: mongo:8
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: |
+        mongosh --port 27017 --quiet --eval "
+          try {
+            var s = rs.status();
+            if (s.ok === 1 && s.members && s.members[0] && s.members[0].stateStr === 'PRIMARY') {
+              quit(0);
+            }
+          } catch (e) {
+            try {
+              var r = rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongodb:27017' }] });
+              if (r.ok === 1 || r.codeName === 'AlreadyInitialized') {
+                quit(0);
+              }
+            } catch (err) {
+              quit(1);
+            }
+          }
+          quit(1);
+        "
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 2s
+
+  server:
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    environment:
+      MONGO_URI: mongodb://mongodb:27017/medicare_ci?replicaSet=rs0
