@@ -43,6 +43,10 @@ jobs:
 
       - name: Run backend tests
         working-directory: server
+        env:
+          MONGO_URI: mongodb://127.0.0.1:27017/medicare_test
+          PORT: 5000
+          JWT_TOKEN_SECRET: ci-test-secret
         run: npm test
 
       - name: Create CI environment file
