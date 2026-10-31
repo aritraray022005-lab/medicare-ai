@@ -59,7 +59,7 @@ const getPublicQuestions = async (req, res) => {
 const getQuestionDetails = async (req, res) => {
     try {
         const { id } = req.params;
-        const question = await Question.findByIdAndUpdate(id, { $inc: { views: 1 } }, { new: true })
+        const question = await Question.findByIdAndUpdate(id, { $inc: { views: 1 } }, { returnDocument: "after" })
             .populate("patient", "name")
             .populate({
                 path: "answers",
