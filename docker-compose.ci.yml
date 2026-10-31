@@ -33,11 +33,17 @@ services:
     depends_on:
       mongodb:
         condition: service_healthy
+    env_file: []
     environment:
       MONGO_URI: mongodb://mongodb:27017/medicare_ci?replicaSet=rs0
+      PORT: "5000"
+      JWT_TOKEN_SECRET: ci-test-secret
+      EMAIL_ID: ci@example.com
+      EMAIL_PASSWORD: ci-test-password
+      GEMINI_API_KEY: ci-test-key
       RUN_INTEGRATION_TESTS: "true"
     volumes:
       - ./server/test:/app/test:ro
-      - ./server/src:/app/src:ro
+
 
 

@@ -8,7 +8,7 @@ RUN npm ci --omit=dev
 
 COPY . .
 
-RUN mkdir -p uploads && chown -R node:node /app
+RUN mkdir -p uploads src/uploads && chown -R node:node /app
 
 USER node
 
