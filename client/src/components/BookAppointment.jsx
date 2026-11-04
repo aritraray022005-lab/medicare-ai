@@ -100,10 +100,59 @@ const BookAppointment = ({ onBack, onSuccess, isVerified, initialSpecialty }) =>
         withCredentials: true
       });
       if (res.data.status === 'success') {
-        setOrgAvailability(res.data.availability || []);
+        // The backend returns { slots: [...] }, not { availability: [...] }.
+        // Each slot contains a room booking and availableTimes in UTC.
+        // Convert those UTC timestamps to the facility's local timezone because
+        // the booking endpoint accepts local date/time values and resolves them
+        // using the organization's timezone.
+        const timezone = selectedOrg?.timezone || 'Asia/Kolkata';
+
+        const getDateInTimezone = (value) => {
+          const parts = new Intl.DateTimeFormat('en-CA', {
+            timeZone: timezone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+          }).formatToParts(new Date(value));
+          const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+          return `${values.year}-${values.month}-${values.day}`;
+        };
+
+        const getTimeInTimezone = (value) => {
+          const parts = new Intl.DateTimeFormat('en-GB', {
+            timeZone: timezone,
+            hour: '2-digit',
+            minute: '2-digit',
+            hourCycle: 'h23'
+          }).formatToParts(new Date(value));
+          const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+          return `${values.hour}:${values.minute}`;
+        };
+
+        const mappedAvailability = (res.data.slots || []).map(window => ({
+          roomBookingId: window.roomBookingId,
+          room: window.room,
+          dateStr: getDateInTimezone(window.startDateTime),
+          startDateTimeStr: getTimeInTimezone(window.startDateTime),
+          endDateTimeStr: getTimeInTimezone(window.endDateTime),
+          slots: (window.availableTimes || [])
+            .filter(availableTime => availableTime.isAvailable)
+            .map(availableTime => getTimeInTimezone(availableTime.startUtc))
+        }));
+
+        setOrgAvailability(mappedAvailability);
+      } else {
+        setOrgAvailability([]);
+        setBookingError(res.data.msg || 'No consultation availability was returned.');
       }
     } catch (err) {
-      setBookingError(err.response?.data?.msg || 'Failed to load consultation availability.');
+      console.error('Failed to load hospital consultation availability:', err.response?.data || err);
+      setOrgAvailability([]);
+      setBookingError(
+        err.response?.data?.msg ||
+        err.response?.data?.message ||
+        'Failed to load consultation availability.'
+      );
     } finally {
       setLoadingAvailability(false);
     }
