@@ -205,29 +205,70 @@ const DoctorDashboard = () => {
     setRequestModal({ open: true, slot, notes: '' });
   };
 
-  const handleSubmitRoomRequest = async (e) => {
-    e.preventDefault();
-    if (!requestModal.slot) return;
-    setDocRoomActionLoading(requestModal.slot._id);
-    setDocRoomError('');
-    setDocRoomMessage('');
-    try {
-      const res = await axios.post('/api/doctors/rooms/requests', {
-        roomSlotId: requestModal.slot._id,
-        notes: requestModal.notes
-      }, { withCredentials: true });
 
-      if (res.data.status === 'success') {
-        setDocRoomMessage(`Room request successfully queued! Server sequence #${res.data.request?.sequenceNumber || '1'} (Gen ${res.data.request?.queueGeneration || '1'}).`);
-        setRequestModal({ open: false, slot: null, notes: '' });
-        fetchDoctorFacilityData();
+const handleSubmitRoomRequest = async (e) => {
+  e.preventDefault();
+
+  if (!requestModal.slot?._id) {
+    setDocRoomError('Please select a valid room slot.');
+    return;
+  }
+
+  const slotId = requestModal.slot._id;
+
+  setDocRoomActionLoading(slotId);
+  setDocRoomError('');
+  setDocRoomMessage('');
+
+  try {
+    const res = await axios.post(
+      '/api/doctors/rooms/requests',
+      {
+        slotId: slotId
+      },
+      {
+        withCredentials: true
       }
-    } catch (err) {
-      setDocRoomError(err.response?.data?.msg || err.response?.data?.message || 'Failed to request room slot.');
-    } finally {
-      setDocRoomActionLoading(null);
+    );
+
+    if (res.data.status === 'success') {
+      setDocRoomMessage(
+        res.data.msg ||
+        `Room request successfully queued! Sequence #${res.data.request?.sequenceNumber || '1'}.`
+      );
+
+      setRequestModal({
+        open: false,
+        slot: null,
+        notes: ''
+      });
+
+      await fetchDoctorFacilityData();
+    } else {
+      setDocRoomError(
+        res.data.msg || 'Unable to submit room request.'
+      );
     }
-  };
+  } catch (err) {
+    console.error(
+      'Room queue submission error:',
+      err.response?.data || err
+    );
+
+    const validationErrors = err.response?.data?.errors;
+
+    const errorMessage = Array.isArray(validationErrors)
+      ? validationErrors.map(error => error.message).join(', ')
+      : err.response?.data?.msg ||
+        err.response?.data?.message ||
+        'Failed to submit room request.';
+
+    setDocRoomError(errorMessage);
+  } finally {
+    setDocRoomActionLoading(null);
+  }
+};
+
 
   const handleWithdrawRoomRequest = async (requestId) => {
     setDocRoomActionLoading(requestId);
