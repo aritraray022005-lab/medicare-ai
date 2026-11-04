@@ -44,6 +44,13 @@ const OrganizationDashboard = () => {
   const [roomSubTab, setRoomSubTab] = useState('rooms'); // rooms, availability, bookings, requests
   const [roomsLoading, setRoomsLoading] = useState(false);
   const [newRoomModal, setNewRoomModal] = useState({ open: false, roomNumber: '', floor: '', department: '', capacity: 1, type: 'Consultation Room' });
+  const [newSlotModal, setNewSlotModal] = useState({
+    open: false,
+    roomId: '',
+    dateStr: '',
+    startTimeStr: '09:00',
+    endTimeStr: '13:00'
+  });
   const [cancelRoomBookingModal, setCancelRoomBookingModal] = useState({ open: false, bookingId: null, reason: '' });
 
   // Phase 6: Facility Patient Consultations State
