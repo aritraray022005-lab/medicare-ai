@@ -129,16 +129,19 @@ const BookAppointment = ({ onBack, onSuccess, isVerified, initialSpecialty }) =>
           return `${values.hour}:${values.minute}`;
         };
 
+        // The server never sends room / floor / internal booking identifiers to patients.
+        // Expired slots are filtered out by the server (and re-validated again when booking).
         const mappedAvailability = (res.data.slots || []).map(window => ({
-          roomBookingId: window.roomBookingId,
-          room: window.room,
           dateStr: getDateInTimezone(window.startDateTime),
           startDateTimeStr: getTimeInTimezone(window.startDateTime),
           endDateTimeStr: getTimeInTimezone(window.endDateTime),
           slots: (window.availableTimes || [])
             .filter(availableTime => availableTime.isAvailable)
-            .map(availableTime => getTimeInTimezone(availableTime.startUtc))
-        }));
+            .map(availableTime => ({
+              timeStr: getTimeInTimezone(availableTime.startUtc),
+              dateStr: getDateInTimezone(availableTime.startUtc)
+            }))
+        })).filter(window => window.slots.length > 0);
 
         setOrgAvailability(mappedAvailability);
       } else {
@@ -215,8 +218,6 @@ const BookAppointment = ({ onBack, onSuccess, isVerified, initialSpecialty }) =>
         bookingType: 'Organization',
         doctorId: selectedOrgDoctor._id,
         organizationId: selectedOrg._id,
-        roomId: selectedSlot.roomId,
-        roomBookingId: selectedSlot.roomBookingId,
         date: selectedSlot.dateStr,
         time: selectedSlot.timeStr,
         durationMinutes: 30,
@@ -536,7 +537,7 @@ const BookAppointment = ({ onBack, onSuccess, isVerified, initialSpecialty }) =>
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
                 <div>
                   <h3 className="text-lg font-bold text-gray-900">1. Select an Approved Healthcare Facility</h3>
-                  <p className="text-sm text-gray-500">Choose a verified hospital or clinic center to view affiliated doctors and rooms</p>
+                  <p className="text-sm text-gray-500">Choose a verified hospital or clinic center to view affiliated doctors and their consultation times</p>
                 </div>
                 <div className="relative w-full sm:w-64">
                   <Search size={16} className="absolute left-3 top-3 text-gray-400" />
@@ -674,7 +675,7 @@ const BookAppointment = ({ onBack, onSuccess, isVerified, initialSpecialty }) =>
                             <p className="font-semibold text-gray-800 mt-2">Consultation Fee: ₹{doc.consultationFee}</p>
                           </div>
                           <button className="mt-3 w-full btn btn-primary text-xs py-1.5">
-                            Select Consultation Room & Slot →
+                            Select Consultation Slot →
                           </button>
                         </div>
                       ))}
@@ -731,20 +732,20 @@ const BookAppointment = ({ onBack, onSuccess, isVerified, initialSpecialty }) =>
                       </div>
                     ) : (
                       <>
-                        <h4 className="text-lg font-bold text-gray-900 mb-2">3. Select Consultation Room & Time</h4>
+                        <h4 className="text-lg font-bold text-gray-900 mb-2">3. Select Consultation Time</h4>
                         <p className="text-sm text-gray-500 mb-4">
-                          Showing confirmed room allocations for Dr. {selectedOrgDoctor.name} at {selectedOrg.name}
+                          Showing upcoming consultation times for Dr. {selectedOrgDoctor.name} at {selectedOrg.name}
                         </p>
 
                         {bookingError && <div className="bg-red-50 text-red-600 p-3 rounded mb-4 text-sm">{bookingError}</div>}
 
                         {loadingAvailability ? (
-                          <div className="p-8 text-center text-muted">Checking allocated consultation rooms...</div>
+                          <div className="p-8 text-center text-muted">Checking available consultation times...</div>
                         ) : orgAvailability.length === 0 ? (
                           <div className="p-6 bg-yellow-50 text-yellow-800 rounded-lg border border-yellow-200 text-sm">
-                            <p className="font-semibold mb-1">No Active Room Allocations Available</p>
+                            <p className="font-semibold mb-1">No Upcoming Consultation Times Available</p>
                             <p className="text-xs">
-                              Dr. {selectedOrgDoctor.name} does not have upcoming approved room bookings at this facility right now. Please choose another doctor or check back soon.
+                              Dr. {selectedOrgDoctor.name} has no upcoming consultation times at this facility right now. Please choose another doctor or check back soon.
                             </p>
                           </div>
                         ) : (
@@ -764,29 +765,27 @@ const BookAppointment = ({ onBack, onSuccess, isVerified, initialSpecialty }) =>
                                           📅 {new Date(window.dateStr).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
                                         </span>
                                         <div className="text-xs text-gray-500 mt-0.5">
-                                          Room {window.room?.roomNumber} {window.room?.building ? `(${window.room.building}, Floor ${window.room.floor})` : ''} • Window: {window.startDateTimeStr} – {window.endDateTimeStr}
+                                          {selectedOrg.name} • Dr. {selectedOrgDoctor.name} • Consultation hours: {window.startDateTimeStr} – {window.endDateTimeStr}
                                         </div>
                                       </div>
                                       <span className="text-xs font-semibold px-2 py-0.5 rounded bg-green-50 text-green-700 border border-green-200">
-                                        Operational
+                                        Available
                                       </span>
                                     </div>
 
                                     {/* Discrete Appointment Slots */}
                                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-                                      {window.slots?.map((timeStr) => {
+                                      {window.slots?.map(({ timeStr, dateStr: slotDateStr }) => {
                                         const isSelected = selectedSlot &&
-                                          selectedSlot.roomBookingId === window.roomBookingId &&
+                                          selectedSlot.dateStr === slotDateStr &&
                                           selectedSlot.timeStr === timeStr;
 
                                         return (
                                           <button
-                                            key={timeStr}
+                                            key={`${slotDateStr}-${timeStr}`}
                                             type="button"
                                             onClick={() => setSelectedSlot({
-                                              roomBookingId: window.roomBookingId,
-                                              roomId: window.room?._id,
-                                              dateStr: window.dateStr,
+                                              dateStr: slotDateStr,
                                               timeStr
                                             })}
                                             className={`py-2 px-3 text-xs font-semibold rounded-md border text-center transition-all ${

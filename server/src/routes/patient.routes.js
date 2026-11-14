@@ -149,5 +149,14 @@ router.delete(
     patientcontroller.cancelAppointment
 );
 
+// QR code for a confirmed hospital appointment (generated in the patient portal)
+const checkinController = require("../controller/checkin.controller");
+
+router.get(
+    "/appointment/:appointmentId/qr",
+    authPatientMiddleware,
+    checkinController.getAppointmentQr
+);
+
 
 module.exports = router;

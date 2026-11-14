@@ -2,6 +2,8 @@ const Doctor = require("../models/doctor.model");
 const Patient = require("../models/patient.model");
 const jwt = require('jsonwebtoken');
 const appointmentModel = require("../models/appointment.model");
+const { APPOINTMENT_STATUS, isAppointmentWindowExpired } = require("../util/appointmentLifecycle.util");
+const { buildQrFields } = require("../services/checkin.service");
 const config = require("../config/config");
 const OTPutil = require("../util/otp.util");
 const { executeTransactionWithRetry } = require("../util/transaction.util");
@@ -871,7 +873,33 @@ const updateAppointmentStatus = async (req, res) => {
                     throw err;
                 }
 
+                // Lifecycle guards: never overwrite Cancelled / Checked-In / In Progress /
+                // Completed / Expired / No-Show appointments.
+                if (normalizedStatus === "Confirmed") {
+                    if (appt.status !== APPOINTMENT_STATUS.PENDING) {
+                        const err = new Error(`Only pending appointments can be confirmed (current status: ${appt.status}).`);
+                        err.statusCode = 409;
+                        throw err;
+                    }
+                    if (isAppointmentWindowExpired(appt)) {
+                        const err = new Error("This appointment's scheduled time has already passed and it can no longer be confirmed.");
+                        err.statusCode = 409;
+                        throw err;
+                    }
+                } else if (
+                    appt.status !== APPOINTMENT_STATUS.PENDING &&
+                    appt.status !== APPOINTMENT_STATUS.CONFIRMED
+                ) {
+                    const err = new Error(`Appointment is ${appt.status} and can no longer be cancelled.`);
+                    err.statusCode = 409;
+                    throw err;
+                }
+
                 appt.status = normalizedStatus;
+                if (normalizedStatus === "Confirmed" && appt.bookingType === "Organization" && appt.organization && appt.endDateTime) {
+                    // Issue the check-in QR (only the hash of the token is stored)
+                    appt.set(buildQrFields(appt._id, appt.endDateTime));
+                }
                 if (normalizedStatus === "Cancelled") {
                     appt.cancelledBy = "Doctor";
                     appt.cancelledAt = new Date();

@@ -47,7 +47,9 @@ const allowedOrigins = [
   "https://medicare-ja3pelnud-aritra-rays-projects-c43f7a18.vercel.app",
 
   // Previous Vercel deployment
-  "https://medicare-ai-git-main-aritra-rays-projects-c43f7a18.vercel.app"
+  "https://medicare-ai-git-main-aritra-rays-projects-c43f7a18.vercel.app",
+
+  "https://medicare-c6gv1rmzu-aritra-rays-projects-c43f7a18.vercel.app"
 ];
 
 app.use(
