@@ -117,6 +117,17 @@ router.patch(
     doctorController.updateAppointmentStatus
 );
 
+// Doctor starts the consultation of a checked-in patient (Checked-In -> In Progress)
+const checkinController = require("../controller/checkin.controller");
+const checkinValidation = require("../validations/checkin.validation");
+
+router.patch(
+    "/appointment/start",
+    doctorAuthMiddleware,
+    ValidationMiddleware(checkinValidation.startConsultationSchema),
+    checkinController.startConsultation
+);
+
 // ==================== AFFILIATION (PHASE 4) ====================
 
 const affiliationController = require("../controller/affiliation.controller");

@@ -578,7 +578,9 @@ const getAvailableSlotsForDoctor = async (req, res) => {
 
         const slotFilter = {
             organization: { $in: orgIds },
-            status: { $in: ["Available", "Queued"] }
+            status: { $in: ["Available", "Queued"] },
+            // Expired slots (scheduled end time already passed) are never offered
+            endDateTime: { $gt: new Date() }
         };
         if (roomId) slotFilter.room = roomId;
         if (date) {
@@ -977,6 +979,12 @@ const requestRoomBooking = async (req, res) => {
                 msg: `Slot is not open for requests (currently ${slot.status}).`
             });
         }
+        if (slot.endDateTime && new Date(slot.endDateTime).getTime() <= Date.now()) {
+            return res.status(409).json({
+                status: "failed",
+                msg: "This room slot has already ended and can no longer be requested."
+            });
+        }
 
         const org = await Organization.findById(slot.organization);
         if (!org || org.isBlocked || !org.isVerifiedByAdmin || !org.isEmailVerified) {
@@ -1047,6 +1055,11 @@ const requestRoomBooking = async (req, res) => {
                 const lockedSlot = await RoomSlot.findById(slotId).session(session);
                 if (!lockedSlot || (lockedSlot.status !== "Available" && lockedSlot.status !== "Queued")) {
                     const err = new Error("Room slot is no longer open for requests.");
+                    err.statusCode = 409;
+                    throw err;
+                }
+                if (lockedSlot.endDateTime && new Date(lockedSlot.endDateTime).getTime() <= Date.now()) {
+                    const err = new Error("This room slot has already ended and can no longer be requested.");
                     err.statusCode = 409;
                     throw err;
                 }

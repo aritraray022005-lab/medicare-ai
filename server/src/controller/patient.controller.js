@@ -17,6 +17,14 @@ const { acquireScheduleLocks } = require("../util/lock.util");
 const { checkDoctorScheduleConflicts } = require("../util/conflict.util");
 const { resolveLocalToUtc } = require("../util/time.util");
 const { queueNotification } = require("../services/outbox.service");
+const {
+    APPOINTMENT_STATUS,
+    SLOT_HOLDING_STATUSES,
+    resolveTimezone,
+    localDateKey,
+    formatLocal
+} = require("../util/appointmentLifecycle.util");
+const { toPatientAppointmentView, toPatientDoctorView } = require("../util/appointmentView.util");
 
 // Auth 
 // Register
@@ -579,15 +587,19 @@ const getOrganizationDoctors = async (req, res) => {
         const doctorIds = approvedAffiliations.map(a => a.doctor);
 
         // Fetch doctors who are email verified and not blocked (admin verification not required for affiliated consults)
-        const doctors = await Doctor.find({
+        const doctorDocs = await Doctor.find({
             _id: { $in: doctorIds },
             isEmailVerified: true,
             isBlocked: false
         })
-        .select("-password -resetOTP -OTPExpiry")
+        .select("name specialization qualification experience bio profilePicture consultationFee rating reviewCount")
         .lean();
 
-        // Also fetch upcoming active RoomBookings for this organization
+        // Public doctor profile only (no credentials, contact or verification data)
+        const doctors = doctorDocs.map(d => toPatientDoctorView(d));
+
+        // Upcoming doctor schedules. Expired schedules (end time already passed) are excluded.
+        // Room / floor / internal booking IDs are intentionally NOT returned to patients.
         const now = new Date();
         const activeBookings = await RoomBooking.find({
             organization: organizationId,
@@ -595,10 +607,18 @@ const getOrganizationDoctors = async (req, res) => {
             status: "Active",
             endDateTime: { $gt: now }
         })
-        .populate("room", "roomNumber floor department")
-        .populate("roomSlot", "date localStartTime localEndTime status")
+        .populate("roomSlot", "date localStartTime localEndTime")
         .sort({ startDateTime: 1 })
         .lean();
+
+        const schedules = activeBookings.map(b => ({
+            doctor: b.doctor,
+            date: b.roomSlot?.date || null,
+            localStartTime: b.roomSlot?.localStartTime || null,
+            localEndTime: b.roomSlot?.localEndTime || null,
+            startDateTime: b.startDateTime,
+            endDateTime: b.endDateTime
+        }));
 
         return res.status(200).json({
             status: "success",
@@ -610,7 +630,7 @@ const getOrganizationDoctors = async (req, res) => {
                 timezone: org.timezone
             },
             doctors,
-            activeBookings
+            activeBookings: schedules
         });
     } catch (error) {
         return res.status(500).json({ status: "failed", message: error.message });
@@ -623,48 +643,60 @@ const getOrganizationDoctors = async (req, res) => {
 const getOrganizationAppointmentAvailability = async (req, res) => {
     try {
         const { organizationId } = req.params;
-        const { doctorId, roomId, dateStr } = req.query;
+        const { doctorId, dateStr } = req.query;
 
         if (!organizationId || !doctorId) {
             return res.status(400).json({ status: "failed", msg: "organizationId and doctorId are required." });
         }
-
-        const query = {
-            organization: organizationId,
-            doctor: doctorId,
-            status: "Active"
-        };
-        if (roomId) query.room = roomId;
+        if (!mongoose.Types.ObjectId.isValid(organizationId) || !mongoose.Types.ObjectId.isValid(doctorId)) {
+            return res.status(400).json({ status: "failed", msg: "Invalid organizationId or doctorId." });
+        }
+        if (dateStr !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr))) {
+            return res.status(400).json({ status: "failed", msg: "dateStr must be in YYYY-MM-DD format." });
+        }
 
         const org = await Organization.findById(organizationId);
         if (!org || org.isBlocked || !org.isVerifiedByAdmin || !org.isEmailVerified) {
             return res.status(404).json({ status: "failed", msg: "Organization not found or inactive." });
         }
 
-        const activeBookings = await RoomBooking.find(query)
-            .populate("room", "roomNumber floor department")
-            .populate("roomSlot", "date localStartTime localEndTime status")
+        const orgTimezone = resolveTimezone(org.timezone);
+        const now = new Date();
+        const nowMs = now.getTime();
+
+        // Only schedules that have not ended yet. Historical doctor schedules are never returned.
+        // (Patients can no longer filter by room: rooms are internal to the facility.)
+        const activeBookings = await RoomBooking.find({
+            organization: organizationId,
+            doctor: doctorId,
+            status: "Active",
+            endDateTime: { $gt: now }
+        })
+            .populate("room", "isOperational")
+            .populate("roomSlot", "date")
             .sort({ startDateTime: 1 })
             .lean();
 
-        const filteredBookings = dateStr
-            ? activeBookings.filter(b => {
-                  const bDateStr = b.roomSlot?.date ? new Date(b.roomSlot.date).toISOString().split("T")[0] : "";
-                  return bDateStr === dateStr || b.startDateTime.toISOString().split("T")[0] === dateStr;
-              })
-            : activeBookings;
+        const filteredBookings = activeBookings
+            .filter(b => !b.room || b.room.isOperational !== false)
+            .filter(b => {
+                if (!dateStr) return true;
+                const slotDateKey = b.roomSlot?.date ? new Date(b.roomSlot.date).toISOString().split("T")[0] : "";
+                return slotDateKey === dateStr || localDateKey(b.startDateTime, orgTimezone) === dateStr;
+            });
 
         const bookingSlots = [];
         for (const booking of filteredBookings) {
             const startMs = new Date(booking.startDateTime).getTime();
             const endMs = new Date(booking.endDateTime).getTime();
             const slotDurationMs = 30 * 60 * 1000;
+            const roomRef = booking.room && booking.room._id ? booking.room._id : booking.room;
 
             const existingAppts = await appointmentModel.find({
-                status: { $in: ["Pending", "Confirmed"] },
+                status: { $in: SLOT_HOLDING_STATUSES },
                 $or: [
                     { doctor: doctorId, startDateTime: { $lt: new Date(endMs) }, endDateTime: { $gt: new Date(startMs) } },
-                    { room: booking.room._id, startDateTime: { $lt: new Date(endMs) }, endDateTime: { $gt: new Date(startMs) } }
+                    { room: roomRef, startDateTime: { $lt: new Date(endMs) }, endDateTime: { $gt: new Date(startMs) } }
                 ]
             }).lean();
 
@@ -673,27 +705,28 @@ const getOrganizationAppointmentAvailability = async (req, res) => {
                 const candStart = new Date(t);
                 const candEnd = new Date(t + slotDurationMs);
 
+                // Today's slots whose scheduled end time has passed are hidden
+                if (candEnd.getTime() <= nowMs) continue;
+
                 const isOccupied = existingAppts.some(a => {
                     const aStart = new Date(a.startDateTime).getTime();
                     const aEnd = new Date(a.endDateTime).getTime();
                     return aStart < candEnd.getTime() && aEnd > candStart.getTime();
                 });
 
-                const hours = String(candStart.getUTCHours()).padStart(2, "0");
-                const mins = String(candStart.getUTCMinutes()).padStart(2, "0");
-
                 availableTimes.push({
                     startUtc: candStart.toISOString(),
                     endUtc: candEnd.toISOString(),
-                    time: `${hours}:${mins}`,
+                    date: localDateKey(candStart, orgTimezone),
+                    time: formatLocal(candStart, orgTimezone, "HH:mm"),
                     isAvailable: !isOccupied
                 });
             }
 
+            if (availableTimes.length === 0) continue;
+
+            // No room, floor, roomSlot or roomBooking identifiers are exposed to patients.
             bookingSlots.push({
-                roomBookingId: booking._id,
-                room: booking.room,
-                slot: booking.roomSlot,
                 startDateTime: booking.startDateTime,
                 endDateTime: booking.endDateTime,
                 availableTimes
@@ -702,6 +735,7 @@ const getOrganizationAppointmentAvailability = async (req, res) => {
 
         return res.status(200).json({
             status: "success",
+            timezone: orgTimezone,
             slots: bookingSlots
         });
     } catch (error) {
@@ -712,6 +746,13 @@ const getOrganizationAppointmentAvailability = async (req, res) => {
 // ========================================
 // BOOK APPOINTMENT (INDEPENDENT & ORGANIZATION)
 // ========================================
+
+// Attaches already-loaded doctor / organization documents to a plain copy of the
+// appointment so it can be projected with toPatientAppointmentView().
+const withRefs = (appointment, refs) => {
+    const plain = typeof appointment.toObject === "function" ? appointment.toObject() : { ...appointment };
+    return { ...plain, ...refs };
+};
 
 const bookAppointment = async (req, res) => {
     try {
@@ -727,11 +768,16 @@ const bookAppointment = async (req, res) => {
             reason,
             bookingType = "Independent",
             organizationId,
-            roomId,
-            roomBookingId,
+            roomId: requestedRoomId,
+            roomBookingId: requestedRoomBookingId,
             durationMinutes = 30,
             clientOffsetMinutes
         } = req.body;
+
+        // Room allocation is resolved on the server. Any room identifiers sent by the
+        // client (deprecated) are only cross-checked, never trusted.
+        let roomId = requestedRoomId;
+        let roomBookingId = requestedRoomBookingId;
 
         if (!doctorId || !date || !time) {
             return res.status(400).json({ status: "failed", msg: "Doctor ID, date and time are required." });
@@ -747,16 +793,16 @@ const bookAppointment = async (req, res) => {
             // ========================================================
             // ORGANIZATION-BASED APPOINTMENT WORKFLOW (PHASE 6)
             // ========================================================
-            if (!organizationId || !roomId || !roomBookingId) {
+            if (!organizationId) {
                 return res.status(400).json({
                     status: "failed",
-                    msg: "organizationId, roomId, and roomBookingId are required for organization appointments."
+                    msg: "organizationId is required for organization appointments."
                 });
             }
 
             if (!mongoose.Types.ObjectId.isValid(organizationId) ||
-                !mongoose.Types.ObjectId.isValid(roomId) ||
-                !mongoose.Types.ObjectId.isValid(roomBookingId)) {
+                (roomId && !mongoose.Types.ObjectId.isValid(roomId)) ||
+                (roomBookingId && !mongoose.Types.ObjectId.isValid(roomBookingId))) {
                 return res.status(400).json({
                     status: "failed",
                     msg: "Invalid ID format for organization, room, or roomBooking."
@@ -795,46 +841,6 @@ const bookAppointment = async (req, res) => {
                 });
             }
 
-            const preRoom = await Room.findById(roomId);
-            if (!preRoom || !preRoom.isOperational) {
-                return res.status(403).json({
-                    status: "failed",
-                    msg: "Requested room is non-operational or not found."
-                });
-            }
-            if (preRoom.organization.toString() !== organizationId.toString()) {
-                return res.status(400).json({
-                    status: "failed",
-                    msg: "Room does not belong to the specified organization."
-                });
-            }
-
-            const preBooking = await RoomBooking.findById(roomBookingId);
-            if (!preBooking || preBooking.status !== "Active") {
-                return res.status(409).json({
-                    status: "failed",
-                    msg: "Room booking is not active or not found."
-                });
-            }
-            if (preBooking.doctor.toString() !== doctorId.toString()) {
-                return res.status(400).json({
-                    status: "failed",
-                    msg: "Room booking doctor does not match the requested doctor."
-                });
-            }
-            if (preBooking.room.toString() !== roomId.toString()) {
-                return res.status(400).json({
-                    status: "failed",
-                    msg: "Room booking room does not match the requested room."
-                });
-            }
-            if (preBooking.organization.toString() !== organizationId.toString()) {
-                return res.status(400).json({
-                    status: "failed",
-                    msg: "Room booking organization does not match the requested organization."
-                });
-            }
-
             // Time resolution via Luxon in organization's timezone
             const orgTimezone = preOrg.timezone || "Asia/Kolkata";
             let resolvedTime;
@@ -854,6 +860,90 @@ const bookAppointment = async (req, res) => {
             }
 
             const { startDateTime, endDateTime } = resolvedTime;
+
+            // Expired slots can never be booked, even by calling the API directly.
+            if (endDateTime.getTime() <= Date.now()) {
+                return res.status(409).json({
+                    status: "failed",
+                    msg: "This consultation slot has already ended and can no longer be booked."
+                });
+            }
+
+            // Legacy clients may still send roomId: validate it exactly as before.
+            let preRoom = null;
+            if (roomId) {
+                preRoom = await Room.findById(roomId);
+                if (!preRoom || !preRoom.isOperational) {
+                    return res.status(403).json({
+                        status: "failed",
+                        msg: "Requested room is non-operational or not found."
+                    });
+                }
+                if (preRoom.organization.toString() !== organizationId.toString()) {
+                    return res.status(400).json({
+                        status: "failed",
+                        msg: "Room does not belong to the specified organization."
+                    });
+                }
+            }
+
+            // Resolve the doctor's active room reservation on the server.
+            let preBooking;
+            if (roomBookingId) {
+                preBooking = await RoomBooking.findById(roomBookingId);
+            } else {
+                preBooking = await RoomBooking.findOne({
+                    organization: organizationId,
+                    doctor: doctorId,
+                    status: "Active",
+                    startDateTime: { $lte: startDateTime },
+                    endDateTime: { $gte: endDateTime }
+                });
+            }
+            if (!preBooking || preBooking.status !== "Active") {
+                return res.status(409).json({
+                    status: "failed",
+                    msg: "Room booking is not active or not found."
+                });
+            }
+            if (preBooking.doctor.toString() !== doctorId.toString()) {
+                return res.status(400).json({
+                    status: "failed",
+                    msg: "Room booking doctor does not match the requested doctor."
+                });
+            }
+            if (roomId && preBooking.room.toString() !== roomId.toString()) {
+                return res.status(400).json({
+                    status: "failed",
+                    msg: "Room booking room does not match the requested room."
+                });
+            }
+            if (preBooking.organization.toString() !== organizationId.toString()) {
+                return res.status(400).json({
+                    status: "failed",
+                    msg: "Room booking organization does not match the requested organization."
+                });
+            }
+
+            // The room always comes from the reservation, never from the request.
+            roomId = preBooking.room.toString();
+            roomBookingId = preBooking._id.toString();
+
+            if (!preRoom) {
+                preRoom = await Room.findById(roomId);
+                if (!preRoom || !preRoom.isOperational) {
+                    return res.status(403).json({
+                        status: "failed",
+                        msg: "Requested room is non-operational or not found."
+                    });
+                }
+                if (preRoom.organization.toString() !== organizationId.toString()) {
+                    return res.status(400).json({
+                        status: "failed",
+                        msg: "Room does not belong to the specified organization."
+                    });
+                }
+            }
 
             // Verify requested appointment interval falls completely inside RoomBooking
             if (startDateTime < preBooking.startDateTime || endDateTime > preBooking.endDateTime) {
@@ -881,6 +971,13 @@ const bookAppointment = async (req, res) => {
                     if (!lockedOrg || lockedOrg.isBlocked || !lockedOrg.isVerifiedByAdmin || !lockedOrg.isEmailVerified) {
                         const err = new Error("Organization is suspended, unverified, or not found.");
                         err.statusCode = 403;
+                        throw err;
+                    }
+
+                    // 2b. Re-validate expiry inside the transaction (booking must not slip past slot end)
+                    if (endDateTime.getTime() <= Date.now()) {
+                        const err = new Error("This consultation slot has already ended and can no longer be booked.");
+                        err.statusCode = 409;
                         throw err;
                     }
 
@@ -936,7 +1033,7 @@ const bookAppointment = async (req, res) => {
                     // 8. Check Room Schedule Conflicts
                     const roomConflict = await appointmentModel.findOne({
                         room: roomId,
-                        status: { $in: ["Pending", "Confirmed"] },
+                        status: { $in: SLOT_HOLDING_STATUSES },
                         startDateTime: { $lt: endDateTime },
                         endDateTime: { $gt: startDateTime }
                     }).session(session);
@@ -989,7 +1086,8 @@ const bookAppointment = async (req, res) => {
                                     doctorName: lockedDoctor.name,
                                     date: date,
                                     time: time,
-                                    venue: `${lockedOrg.name}, Room ${lockedRoom.roomNumber}`
+                                    // Room details are internal and must never be sent to patients.
+                                    venue: lockedOrg.name
                                 }
                             },
                             session
@@ -1037,7 +1135,7 @@ const bookAppointment = async (req, res) => {
             return res.status(201).json({
                 status: "success",
                 msg: "Organization appointment booked successfully.",
-                data: newAppointment
+                data: toPatientAppointmentView(withRefs(newAppointment, { doctor: preDoctor, organization: preOrg }))
             });
         }
 
@@ -1104,7 +1202,7 @@ const bookAppointment = async (req, res) => {
                     doctor: doctorId,
                     date: appointmentDate,
                     time: time,
-                    status: { $in: ["Pending", "Confirmed"] }
+                    status: { $in: SLOT_HOLDING_STATUSES }
                 }).session(session);
 
                 if (existingAppointment) {
@@ -1180,7 +1278,7 @@ const bookAppointment = async (req, res) => {
         return res.status(201).json({
             status: "success",
             msg: "Appointment booked successfully.",
-            data: newAppointment
+            data: toPatientAppointmentView(withRefs(newAppointment, { doctor }))
         });
     } catch (error) {
         console.error("Book appointment error:", error);
@@ -1205,17 +1303,18 @@ const getAllAppointment = async (req, res) => {
             });
         }
 
+        // Room / floor / roomSlot / roomBooking are internal and are never populated or returned
+        // to patients. The response is an allow-listed projection.
         const appointments = await appointmentModel.find({ patient: patientId })
-            .populate("doctor", "name email specialization consultationFee location")
-            .populate("organization", "name email phone address timezone")
-            .populate("room", "roomNumber floor department")
-            .populate("roomSlot", "date localStartTime localEndTime status")
-            .populate("roomBooking", "startDateTime endDateTime status")
+            .populate("doctor", "name specialization qualification experience bio profilePicture consultationFee rating reviewCount location clinicLocation")
+            .populate("organization", "name phone address timezone")
             .sort({ date: -1, time: -1 });
+
+        const now = new Date();
 
         return res.status(200).json({
             success: true,
-            data: appointments
+            data: appointments.map((appt) => toPatientAppointmentView(appt, now))
         });
     } catch (error) {
         return res.status(500).json({
@@ -1273,6 +1372,14 @@ const cancelAppointment = async (req, res) => {
             });
         }
 
+        // Once the patient has checked in (or the visit is finished) it can no longer be cancelled.
+        if (existingAppt.status !== APPOINTMENT_STATUS.PENDING && existingAppt.status !== APPOINTMENT_STATUS.CONFIRMED) {
+            return res.status(400).json({
+                success: false,
+                msg: `Appointment is ${existingAppt.status} and can no longer be cancelled.`
+            });
+        }
+
         let cancelledAppointment;
 
         try {
@@ -1292,6 +1399,13 @@ const cancelAppointment = async (req, res) => {
                 if (!appt) {
                     const err = new Error("Appointment not found inside transaction.");
                     err.statusCode = 404;
+                    throw err;
+                }
+
+                // Re-check inside the transaction: the patient may have been checked in meanwhile.
+                if (appt.status !== APPOINTMENT_STATUS.PENDING && appt.status !== APPOINTMENT_STATUS.CONFIRMED) {
+                    const err = new Error(`Appointment is ${appt.status} and can no longer be cancelled.`);
+                    err.statusCode = 409;
                     throw err;
                 }
 
@@ -1337,7 +1451,7 @@ const cancelAppointment = async (req, res) => {
         return res.status(200).json({
             success: true,
             msg: "Appointment cancelled successfully",
-            appointment: cancelledAppointment
+            appointment: toPatientAppointmentView(cancelledAppointment)
         });
 
     } catch (error) {

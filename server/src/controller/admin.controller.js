@@ -18,6 +18,7 @@ const { acquireScheduleLocks } = require("../util/lock.util");
 const { executeTransactionWithRetry } = require("../util/transaction.util");
 const { checkDoctorScheduleConflicts } = require("../util/conflict.util");
 const { resolveLocalToUtc } = require("../util/time.util");
+const { SLOT_HOLDING_STATUSES } = require("../util/appointmentLifecycle.util");
 
 //Auth
 
@@ -853,7 +854,7 @@ const resolveHistoricalAppointment = async (req, res) => {
                 // Check room appointment conflict
                 const roomConflict = await appointmentModel.findOne({
                     room: booking.room,
-                    status: { $in: ["Pending", "Confirmed"] },
+                    status: { $in: SLOT_HOLDING_STATUSES },
                     startDateTime: { $lt: endDateTime },
                     endDateTime: { $gt: startDateTime },
                     _id: { $ne: appt._id }
@@ -891,7 +892,8 @@ const resolveHistoricalAppointment = async (req, res) => {
                                 doctorName: doctor.name,
                                 date: dateStr,
                                 time: timeStr,
-                                venue: `${org.name}, Room ${room.roomNumber}`
+                                // Room details are internal and must never be sent to patients.
+                                venue: org.name
                             }
                         },
                         session

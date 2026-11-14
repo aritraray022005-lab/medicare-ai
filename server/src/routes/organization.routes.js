@@ -197,4 +197,34 @@ router.get(
     roomController.getOrganizationAppointments
 );
 
+// ==================== SMART QUEUE: PATIENT CHECK-IN & TICKET ====================
+
+const checkinController = require("../controller/checkin.controller");
+const checkinValidation = require("../validations/checkin.validation");
+
+// Scan a patient's QR code (organization identity is taken from the session only)
+router.post(
+    "/checkin/scan",
+    organizationAuthMiddleware,
+    requireVerifiedOrganization,
+    ValidationMiddleware(checkinValidation.scanQrSchema),
+    checkinController.scanQr
+);
+
+// Today's checked-in patients (queue board)
+router.get(
+    "/checkin/queue",
+    organizationAuthMiddleware,
+    requireVerifiedOrganization,
+    checkinController.getQueue
+);
+
+// Re-print an existing ticket
+router.get(
+    "/checkin/appointments/:appointmentId/ticket",
+    organizationAuthMiddleware,
+    requireVerifiedOrganization,
+    checkinController.reprintTicket
+);
+
 module.exports = router;

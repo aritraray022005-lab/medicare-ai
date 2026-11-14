@@ -1,5 +1,6 @@
 const Appointment = require("../models/appointment.model");
 const RoomBooking = require("../models/roomBooking.model");
+const { SLOT_HOLDING_STATUSES } = require("./appointmentLifecycle.util");
 
 /**
  * Checks for doctor schedule conflicts across Tier 1, Tier 2, and Tier 3.
@@ -44,7 +45,7 @@ async function checkDoctorScheduleConflicts(doctorId, startDateTime, endDateTime
     // ========================================================
     const apptQuery = {
         doctor: doctorId,
-        status: { $in: ["Pending", "Confirmed"] },
+        status: { $in: SLOT_HOLDING_STATUSES },
         startDateTime: { $lt: endDateTime },
         endDateTime: { $gt: startDateTime }
     };
@@ -67,7 +68,7 @@ async function checkDoctorScheduleConflicts(doctorId, startDateTime, endDateTime
     // ========================================================
     const tier3Query = {
         doctor: doctorId,
-        status: { $in: ["Pending", "Confirmed"] },
+        status: { $in: SLOT_HOLDING_STATUSES },
         isTimezoneUnconfirmed: true
     };
     if (excludeAppointmentId) {

@@ -798,7 +798,7 @@ function resetMocks() {
             doctor: doctorId,
             patient: patientId,
             status: "Pending",
-            date: new Date(),
+            date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000), // future date: ended appointments cannot be confirmed
             time: "10:00",
             save: async function() {
                 apptSaved = true;

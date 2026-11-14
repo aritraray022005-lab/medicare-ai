@@ -24,6 +24,7 @@ import OrganizationLogin from './pages/OrganizationLogin';
 import OrganizationRegister from './pages/OrganizationRegister';
 import OrganizationVerifyEmail from './pages/OrganizationVerifyEmail';
 import OrganizationDashboard from './pages/OrganizationDashboard';
+import OrganizationCheckin from './pages/OrganizationCheckin';
 import Footer from './components/Footer';
 import axios from 'axios';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -72,6 +73,7 @@ const AppNavbar = () => {
     links = [{ to: '/organization', label: 'For Facilities', end: true }];
     if (auth.organization) {
       links.push({ to: '/organization/dashboard', label: 'Dashboard' });
+      links.push({ to: '/organization/checkin', label: 'Patient Check-in' });
     } else {
       links.push({ to: '/organization/login', label: 'Facility Login' });
       actionButton = { to: '/organization/register', label: 'Register Facility' };
@@ -161,6 +163,7 @@ function App() {
 
               {/* Organization only */}
               <Route path="/organization/dashboard" element={<ProtectedRoute role="organization"><OrganizationDashboard /></ProtectedRoute>} />
+              <Route path="/organization/checkin" element={<ProtectedRoute role="organization"><OrganizationCheckin /></ProtectedRoute>} />
 
               {/* Admin only */}
               <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />

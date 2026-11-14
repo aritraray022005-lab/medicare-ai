@@ -70,8 +70,12 @@ const appointmentSchema = new mongoose.Schema(
             enum: [
                 "Pending",
                 "Confirmed",
+                "Checked-In",
+                "In Progress",
+                "Completed",
                 "Cancelled",
-                "Expired"
+                "Expired",
+                "No-Show"
             ],
             default: "Pending"
         },
@@ -164,6 +168,95 @@ const appointmentSchema = new mongoose.Schema(
 
 
         // =========================
+        // QR CHECK-IN (HOSPITAL APPOINTMENTS)
+        // The raw QR token is never stored. Only its SHA-256 hash is kept.
+        // qrNonce is a random value used (with a server secret) to re-derive
+        // the token for the patient. Both are hidden from default queries.
+        // =========================
+
+        qrTokenHash: {
+            type: String,
+            default: null,
+            select: false
+        },
+
+        qrNonce: {
+            type: String,
+            default: null,
+            select: false
+        },
+
+        qrIssuedAt: {
+            type: Date,
+            default: null
+        },
+
+        qrExpiresAt: {
+            type: Date,
+            default: null
+        },
+
+
+        // =========================
+        // PATIENT FLOW / QUEUE
+        // =========================
+
+        checkedInAt: {
+            type: Date,
+            default: null
+        },
+
+        // Organization account that scanned the QR code
+        checkedInBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Organization",
+            default: null
+        },
+
+        queueNumber: {
+            type: Number,
+            default: null
+        },
+
+        // Facility-local calendar day the queue number belongs to (YYYY-MM-DD)
+        queueDate: {
+            type: String,
+            default: null
+        },
+
+        ticketReprintCount: {
+            type: Number,
+            default: 0
+        },
+
+        consultationStartedAt: {
+            type: Date,
+            default: null
+        },
+
+        completedAt: {
+            type: Date,
+            default: null
+        },
+
+        completedBy: {
+            type: String,
+            enum: ["System", "Doctor", null],
+            default: null
+        },
+
+        noShowAt: {
+            type: Date,
+            default: null
+        },
+
+        expiredAt: {
+            type: Date,
+            default: null
+        },
+
+
+        // =========================
         // MIGRATION TRACKING
         // =========================
 
@@ -231,6 +324,35 @@ appointmentSchema.index(
     },
     {
         sparse: true
+    }
+);
+
+
+// ========================================
+// QR TOKEN HASH LOOKUP (UNIQUE WHEN PRESENT)
+// ========================================
+
+appointmentSchema.index(
+    {
+        qrTokenHash: 1
+    },
+    {
+        unique: true,
+        partialFilterExpression: {
+            qrTokenHash: { $type: "string" }
+        }
+    }
+);
+
+
+// ========================================
+// LIFECYCLE SWEEP INDEX (cron)
+// ========================================
+
+appointmentSchema.index(
+    {
+        status: 1,
+        endDateTime: 1
     }
 );
 
