@@ -1,6 +1,7 @@
 require("dotenv").config();
 const assert = require("assert");
 const mongoose = require("mongoose");
+const futureTestDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 const Patient = require("../src/models/patient.model");
 const Doctor = require("../src/models/doctor.model");
 const Organization = require("../src/models/organization.model");
@@ -569,8 +570,8 @@ function resetMocks() {
             organization: mockOrgId,
             room: mockRoomId,
             doctor: mockDoctorId,
-            startDateTime: new Date("2026-11-15T09:00:00.000Z"),
-            endDateTime: new Date("2026-11-15T13:00:00.000Z")
+            startDateTime: new Date(`${futureTestDate}T09:00:00.000Z`),
+            endDateTime: new Date(`${futureTestDate}T13:00:00.000Z`)
         });
 
         Doctor.findById = () => createMockQuery({ _id: mockDoctorId, isEmailVerified: true, isBlocked: false });
@@ -586,7 +587,7 @@ function resetMocks() {
                 organizationId: mockOrgId.toString(),
                 roomId: mockRoomId.toString(),
                 roomBookingId: mockBookingId.toString(),
-                date: "2026-11-15",
+                date: futureTestDate,
                 time: "10:00"
             }
         };
@@ -661,8 +662,8 @@ function resetMocks() {
             room: mockRoomId,
             status: "Queued",
             queueGeneration: 1,
-            startDateTime: new Date("2026-11-15T09:00:00.000Z"),
-            endDateTime: new Date("2026-11-15T13:00:00.000Z"),
+            startDateTime: new Date(`${futureTestDate}T09:00:00.000Z`),
+            endDateTime: new Date(`${futureTestDate}T13:00:00.000Z`),
             timezone: "Asia/Kolkata",
             save: async function() { this.status = "Reserved"; }
         });

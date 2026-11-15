@@ -1,6 +1,7 @@
 require("dotenv").config();
 const assert = require("assert");
 const mongoose = require("mongoose");
+const futureTestDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 const Patient = require("../src/models/patient.model");
 const Doctor = require("../src/models/doctor.model");
 const Organization = require("../src/models/organization.model");
@@ -117,8 +118,8 @@ const defaultBooking = {
     room: roomId,
     roomSlot: roomSlotId,
     status: "Active",
-    startDateTime: new Date("2026-11-15T09:00:00.000Z"),
-    endDateTime: new Date("2026-11-15T13:00:00.000Z")
+    startDateTime: new Date(`${futureTestDate}T09:00:00.000Z`),
+    endDateTime: new Date(`${futureTestDate}T13:00:00.000Z`)
 };
 
 const defaultPatient = {
@@ -180,8 +181,8 @@ function resetMocks() {
         room: roomId,
         roomSlot: roomSlotId,
         status: "Active",
-        startDateTime: new Date("2026-11-15T09:00:00.000Z"),
-        endDateTime: new Date("2026-11-15T13:00:00.000Z"),
+        startDateTime: new Date(`${futureTestDate}T09:00:00.000Z`),
+        endDateTime: new Date(`${futureTestDate}T13:00:00.000Z`),
         save: async function() { return this; }
     };
 
@@ -252,7 +253,7 @@ function resetMocks() {
 (async () => {
     resetMocks();
 
-    const sampleDate = "2026-11-15";
+    const sampleDate = futureTestDate;
     const sampleTime = "10:00";
 
     // ========================================================
@@ -452,7 +453,7 @@ function resetMocks() {
                 doctorId: doctorId.toString(),
                 roomId: roomId.toString(),
                 roomBookingId: roomBookingId.toString(),
-                date: "2026-11-15",
+                date: futureTestDate,
                 time: "08:30",
                 durationMinutes: 30
             }
@@ -475,7 +476,7 @@ function resetMocks() {
                 doctorId: doctorId.toString(),
                 roomId: roomId.toString(),
                 roomBookingId: roomBookingId.toString(),
-                date: "2026-11-15",
+                date: futureTestDate,
                 time: "12:45",
                 durationMinutes: 30
             }
@@ -553,8 +554,8 @@ function resetMocks() {
                     doctor: doctorId,
                     bookingType: "Independent",
                     status: "Confirmed",
-                    startDateTime: new Date("2026-11-15T10:00:00.000Z"),
-                    endDateTime: new Date("2026-11-15T10:30:00.000Z")
+                    startDateTime: new Date(`${futureTestDate}T10:00:00.000Z`),
+                    endDateTime: new Date(`${futureTestDate}T10:30:00.000Z`)
                 });
             }
             return createMockQuery(null);
@@ -568,7 +569,7 @@ function resetMocks() {
                 doctorId: doctorId.toString(),
                 roomId: roomId.toString(),
                 roomBookingId: roomBookingId.toString(),
-                date: "2026-11-15",
+                date: futureTestDate,
                 time: "10:15",
                 durationMinutes: 30
             }
@@ -625,8 +626,8 @@ function resetMocks() {
                     _id: new mongoose.Types.ObjectId(),
                     room: roomId,
                     status: "Confirmed",
-                    startDateTime: new Date("2026-11-15T10:00:00.000Z"),
-                    endDateTime: new Date("2026-11-15T10:30:00.000Z")
+                    startDateTime: new Date(`${futureTestDate}T10:00:00.000Z`),
+                    endDateTime: new Date(`${futureTestDate}T10:30:00.000Z`)
                 });
             }
             return createMockQuery(null);
@@ -944,7 +945,7 @@ function resetMocks() {
                 roomBooking: readCount === 1 ? initialObservedBookingId : changedBookingId,
                 status: "Pending",
                 isTimezoneUnconfirmed: true,
-                date: new Date("2026-11-15T00:00:00.000Z"),
+                date: new Date(`${futureTestDate}T00:00:00.000Z`),
                 time: "10:00"
             });
         };
@@ -955,8 +956,8 @@ function resetMocks() {
             room: roomId,
             organization: orgId,
             status: "Active",
-            startDateTime: new Date("2026-11-15T09:00:00.000Z"),
-            endDateTime: new Date("2026-11-15T13:00:00.000Z")
+            startDateTime: new Date(`${futureTestDate}T09:00:00.000Z`),
+            endDateTime: new Date(`${futureTestDate}T13:00:00.000Z`)
         });
 
         const req = {
@@ -987,7 +988,7 @@ function resetMocks() {
             roomBooking: roomBookingId,
             status: "Pending",
             isTimezoneUnconfirmed: true,
-            date: new Date("2026-11-15T00:00:00.000Z"),
+            date: new Date(`${futureTestDate}T00:00:00.000Z`),
             time: "10:00"
         });
 
@@ -997,8 +998,8 @@ function resetMocks() {
             room: roomId,
             organization: orgId,
             status: "Active",
-            startDateTime: new Date("2026-11-15T09:00:00.000Z"),
-            endDateTime: new Date("2026-11-15T13:00:00.000Z")
+            startDateTime: new Date(`${futureTestDate}T09:00:00.000Z`),
+            endDateTime: new Date(`${futureTestDate}T13:00:00.000Z`)
         });
 
         const req = {
@@ -1029,7 +1030,7 @@ function resetMocks() {
             roomBooking: roomBookingId,
             status: "Pending",
             isTimezoneUnconfirmed: true,
-            date: new Date("2026-11-15T00:00:00.000Z"),
+            date: new Date(`${futureTestDate}T00:00:00.000Z`),
             time: "10:00"
         });
 
@@ -1039,8 +1040,8 @@ function resetMocks() {
             room: otherRoomId, // RoomBooking belongs to otherRoomId!
             organization: orgId,
             status: "Active",
-            startDateTime: new Date("2026-11-15T09:00:00.000Z"),
-            endDateTime: new Date("2026-11-15T13:00:00.000Z")
+            startDateTime: new Date(`${futureTestDate}T09:00:00.000Z`),
+            endDateTime: new Date(`${futureTestDate}T13:00:00.000Z`)
         });
 
         const req = {
@@ -1068,9 +1069,9 @@ function resetMocks() {
             room: roomId,
             organization: orgId,
             roomBooking: roomBookingId,
-            startDateTime: new Date("2026-11-15T10:00:00.000Z"),
-            endDateTime: new Date("2026-11-15T10:30:00.000Z"),
-            date: new Date("2026-11-15T00:00:00.000Z"),
+            startDateTime: new Date(`${futureTestDate}T10:00:00.000Z`),
+            endDateTime: new Date(`${futureTestDate}T10:30:00.000Z`),
+            date: new Date(`${futureTestDate}T00:00:00.000Z`),
             time: "10:00",
             status: "Confirmed",
             isTimezoneUnconfirmed: true,

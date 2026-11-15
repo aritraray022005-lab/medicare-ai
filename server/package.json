@@ -5,7 +5,7 @@
   "main": "helloworld.js",
   "scripts": {
     "dev": "nodemon server.js",
-    "test": "node test/timezone.test.js && node test/models.test.js && node test/lock_conflict.test.js && node test/outbox.test.js && node test/organization_auth.test.js && node test/affiliation.test.js && node test/room_booking.test.js && node test/patient_appointment.test.js && node test/remediation_phase5_phase6.test.js && node test/smart_queue.test.js && node test/replica_set_integration.test.js",
+    "test": "node test/timezone.test.js && node test/models.test.js && node test/lock_conflict.test.js && node test/outbox.test.js && node test/organization_auth.test.js && node test/affiliation.test.js && node test/room_booking.test.js && node test/patient_appointment.test.js && node test/remediation_phase5_phase6.test.js && node test/smart_queue.test.js && node test/qr_lifecycle.test.js && node test/replica_set_integration.test.js",
     "test:integration": "node test/replica_set_integration.test.js",
     "start": "node server.js"
   },

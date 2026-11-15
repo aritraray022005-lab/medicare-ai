@@ -1,4 +1,4 @@
-const { APPOINTMENT_STATUS, getAppointmentWindow } = require("./appointmentLifecycle.util");
+const { getAppointmentWindow, getQrAvailability } = require("./appointmentLifecycle.util");
 
 /**
  * Patient-facing projection of an appointment.
@@ -63,11 +63,10 @@ function toPatientAppointmentView(appt, now = new Date()) {
     const isOrg = src.bookingType === "Organization";
     const { end } = getAppointmentWindow(src);
 
-    const qrAvailable =
-        isOrg &&
-        src.status === APPOINTMENT_STATUS.CONFIRMED &&
-        !!end &&
-        end.getTime() > now.getTime();
+    // Same backend rule as GET /qr: Confirmed + today's local date in the facility
+    // timezone + slot END not passed. No before-start restriction.
+    const orgTimezone = src.organization && typeof src.organization === "object" ? src.organization.timezone : null;
+    const qrAvailable = getQrAvailability(src, now, orgTimezone).available;
 
     return {
         _id: src._id,
@@ -87,6 +86,7 @@ function toPatientAppointmentView(appt, now = new Date()) {
         checkedInAt: src.checkedInAt || null,
         queueNumber: src.queueNumber || null,
         completedAt: src.completedAt || null,
+        missedAt: src.missedAt || null,
         qr: isOrg
             ? { available: qrAvailable, expiresAt: qrAvailable ? end : null }
             : null,

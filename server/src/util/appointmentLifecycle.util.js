@@ -9,13 +9,21 @@ const { DateTime, IANAZone } = require("luxon");
  *      │                               │                            ▼
  *      │                               │                       In Progress
  *      ▼                               ▼                            │
- *   Expired (slot ended)        No-Show (end + grace,               ▼
- *                               never checked in)             Completed (end + grace)
+ *   Expired (slot ended)         Missed (slot ended,                ▼
+ *                                never checked in)         Completed (slot ended)
  *
- *   Cancelled can be reached from Pending / Confirmed only and is never overwritten.
+ *   - Finalisation happens at the exact scheduled slot END (endDateTime <= now).
+ *     There is NO grace period.
+ *   - "No-Show" is the legacy name of "Missed". It is still a valid status so
+ *     historical records keep working, but new unattended appointments are "Missed".
+ *   - Cancelled can be reached from Pending / Confirmed only and is never overwritten.
  *
- * All instants are stored as UTC Dates. Wall-clock formatting uses the
- * organization timezone, falling back to Asia/Kolkata.
+ * QR availability (patient) and check-in (staff) are only possible on the
+ * appointment's local calendar date in the facility timezone, at any time of that
+ * day (no before-start restriction), until the actual slot END.
+ *
+ * All instants are stored as UTC Dates. Wall-clock formatting and calendar-date
+ * comparisons use the facility timezone, falling back to Asia/Kolkata.
  */
 
 const APPOINTMENT_STATUS = Object.freeze({
@@ -26,10 +34,19 @@ const APPOINTMENT_STATUS = Object.freeze({
     COMPLETED: "Completed",
     CANCELLED: "Cancelled",
     EXPIRED: "Expired",
+    MISSED: "Missed",
+    // Legacy name of MISSED. Kept so historical records remain valid.
     NO_SHOW: "No-Show"
 });
 
 const ALL_APPOINTMENT_STATUSES = Object.values(APPOINTMENT_STATUS);
+
+// Statuses meaning "a hospital appointment the patient never attended".
+// MISSED is the current status; NO_SHOW is the legacy one (historical records).
+const UNATTENDED_FINAL_STATUSES = Object.freeze([
+    APPOINTMENT_STATUS.MISSED,
+    APPOINTMENT_STATUS.NO_SHOW
+]);
 
 // Statuses that still occupy a doctor / room time slot.
 const SLOT_HOLDING_STATUSES = Object.freeze([
@@ -47,11 +64,6 @@ const ATTENDED_STATUSES = Object.freeze([
 
 const DEFAULT_TIMEZONE = "Asia/Kolkata";
 const DEFAULT_SLOT_MINUTES = 30;
-
-function getCompletionGraceMinutes() {
-    const raw = Number(process.env.APPOINTMENT_COMPLETION_GRACE_MINUTES);
-    return Number.isFinite(raw) && raw >= 0 ? raw : 60;
-}
 
 function resolveTimezone(tz) {
     return tz && IANAZone.isValidZone(tz) ? tz : DEFAULT_TIMEZONE;
@@ -98,15 +110,6 @@ function isAppointmentWindowExpired(appt, now = new Date()) {
     return !!end && end.getTime() <= now.getTime();
 }
 
-function addMinutes(date, minutes) {
-    return new Date(new Date(date).getTime() + minutes * 60 * 1000);
-}
-
-/** Instant at which a Checked-In / In Progress / unattended appointment is finalised. */
-function getFinalisationInstant(end) {
-    return addMinutes(end, getCompletionGraceMinutes());
-}
-
 /** Start of the appointment's local calendar day (UTC Date) in the given timezone. */
 function startOfLocalDay(instant, timezone) {
     return DateTime.fromJSDate(new Date(instant), { zone: resolveTimezone(timezone) })
@@ -120,6 +123,49 @@ function localDateKey(instant, timezone) {
     return DateTime.fromJSDate(new Date(instant), { zone: resolveTimezone(timezone) }).toISODate();
 }
 
+/**
+ * Timezone-safe check that two instants fall on the same LOCAL calendar date in
+ * the given facility timezone.
+ */
+function isSameLocalDay(a, b, timezone) {
+    return localDateKey(a, timezone) === localDateKey(b, timezone);
+}
+
+/**
+ * Backend decision: may the patient see / retrieve the check-in QR right now?
+ *
+ *   - hospital (Organization) appointment, status Confirmed
+ *   - the actual slot END has not passed (endDateTime > now)
+ *   - the appointment's local calendar date equals today's date in the facility
+ *     timezone. There is deliberately NO before-start restriction: on the day of
+ *     the appointment the QR is usable at any time.
+ *
+ * Returns { available, reason } where reason is one of:
+ *   OK | NOT_APPLICABLE | NOT_CONFIRMED | EXPIRED | NOT_TODAY_FUTURE | NOT_TODAY_PAST
+ */
+function getQrAvailability(appt, now = new Date(), organizationTimezone = null) {
+    if (!appt || appt.bookingType !== "Organization" || !appt.organization) {
+        return { available: false, reason: "NOT_APPLICABLE" };
+    }
+    if (appt.status !== APPOINTMENT_STATUS.CONFIRMED) {
+        return { available: false, reason: "NOT_CONFIRMED" };
+    }
+    if (!appt.startDateTime || !appt.endDateTime) {
+        return { available: false, reason: "EXPIRED" };
+    }
+    if (new Date(appt.endDateTime).getTime() <= now.getTime()) {
+        return { available: false, reason: "EXPIRED" };
+    }
+
+    const tz = resolveTimezone(appt.timezone || organizationTimezone);
+    const apptDay = localDateKey(appt.startDateTime, tz);
+    const today = localDateKey(now, tz);
+    if (apptDay === today) {
+        return { available: true, reason: "OK" };
+    }
+    return { available: false, reason: apptDay > today ? "NOT_TODAY_FUTURE" : "NOT_TODAY_PAST" };
+}
+
 function formatLocal(instant, timezone, format) {
     return DateTime.fromJSDate(new Date(instant), { zone: resolveTimezone(timezone) }).toFormat(format);
 }
@@ -129,15 +175,15 @@ module.exports = {
     ALL_APPOINTMENT_STATUSES,
     SLOT_HOLDING_STATUSES,
     ATTENDED_STATUSES,
+    UNATTENDED_FINAL_STATUSES,
     DEFAULT_TIMEZONE,
     DEFAULT_SLOT_MINUTES,
-    getCompletionGraceMinutes,
     resolveTimezone,
     getAppointmentWindow,
     isAppointmentWindowExpired,
-    addMinutes,
-    getFinalisationInstant,
     startOfLocalDay,
     localDateKey,
+    isSameLocalDay,
+    getQrAvailability,
     formatLocal
 };

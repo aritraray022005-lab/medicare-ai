@@ -102,7 +102,7 @@ const getQueue = async (req, res) => {
             dateKey = String(req.query.date);
         }
 
-        const queue = await checkinService.getDailyQueue({ organizationId, dateKey });
+        const queue = await checkinService.getDailyQueue({ organizationId, dateKey, timezone: tz });
         return res.status(200).json({ status: "success", date: dateKey, count: queue.length, queue });
     } catch (error) {
         return handleError(res, error, "Failed to load queue.");

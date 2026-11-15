@@ -1,13 +1,15 @@
 const Appointment = require("../models/appointment.model");
 const QueueCounter = require("../models/queueCounter.model");
 const Room = require("../models/room.model");
+const Organization = require("../models/organization.model");
+const { DateTime } = require("luxon");
 const {
     APPOINTMENT_STATUS,
     ATTENDED_STATUSES,
-    startOfLocalDay,
     localDateKey,
     formatLocal,
-    resolveTimezone
+    resolveTimezone,
+    getQrAvailability
 } = require("../util/appointmentLifecycle.util");
 const {
     generateNonce,
@@ -51,8 +53,25 @@ const STATUS_MESSAGES_FOR_PATIENT_QR = {
     [APPOINTMENT_STATUS.COMPLETED]: "This appointment is completed.",
     [APPOINTMENT_STATUS.CANCELLED]: "This appointment was cancelled.",
     [APPOINTMENT_STATUS.EXPIRED]: "This appointment has expired.",
-    [APPOINTMENT_STATUS.NO_SHOW]: "This appointment was marked as a no-show."
+    [APPOINTMENT_STATUS.MISSED]: "This appointment was missed because no check-in happened before the scheduled end time.",
+    // Legacy status of historical records
+    [APPOINTMENT_STATUS.NO_SHOW]: "This appointment was marked as missed."
 };
+
+/**
+ * Facility timezone used for every calendar-date decision. Prefers the timezone
+ * stored on the appointment (copied from the facility at booking time), then the
+ * facility's configured timezone, then Asia/Kolkata. Never the browser's.
+ */
+async function resolveFacilityTimezone(appt) {
+    if (appt.timezone) return resolveTimezone(appt.timezone);
+    let orgTz = null;
+    if (appt.organization) {
+        const org = await Organization.findById(appt.organization._id || appt.organization).select("timezone").lean();
+        orgTz = org && org.timezone;
+    }
+    return resolveTimezone(orgTz);
+}
 
 /**
  * Returns the QR PNG (data URL) for a patient's confirmed hospital appointment.
@@ -75,8 +94,26 @@ async function getPatientQr({ patientId, appointmentId, now = new Date() }) {
             STATUS_MESSAGES_FOR_PATIENT_QR[appt.status] || "QR code is not available for this appointment."
         );
     }
-    if (!appt.endDateTime || appt.endDateTime.getTime() <= now.getTime()) {
-        throw new CheckinError("QR_EXPIRED", 410, "This QR code has expired.");
+
+    // Enforced HERE (backend) so direct API calls cannot bypass the date rule.
+    const facilityTz = await resolveFacilityTimezone(appt);
+    const availability = getQrAvailability(appt, now, facilityTz);
+    if (!availability.available) {
+        if (availability.reason === "EXPIRED") {
+            throw new CheckinError("QR_EXPIRED", 410, "This QR code has expired.");
+        }
+        if (availability.reason === "NOT_TODAY_FUTURE") {
+            throw new CheckinError(
+                "QR_NOT_AVAILABLE_YET",
+                409,
+                "Your QR code will be available on the day of your appointment."
+            );
+        }
+        throw new CheckinError(
+            "QR_NOT_AVAILABLE",
+            409,
+            "The QR code is only available on the day of the appointment."
+        );
     }
 
     let nonce = appt.qrNonce;
@@ -141,7 +178,12 @@ async function nextQueueNumber(organizationId, doctorId, dateKey) {
 async function ensureQueueNumber(appt) {
     if (appt.queueNumber) return appt;
 
-    const dateKey = localDateKey(appt.startDateTime, appt.timezone);
+    let timezone = appt.timezone;
+    if (!timezone) {
+        const org = await Organization.findById(appt.organization).select("timezone").lean();
+        timezone = org && org.timezone;
+    }
+    const dateKey = localDateKey(appt.startDateTime, timezone);
     const number = await nextQueueNumber(appt.organization, appt.doctor, dateKey);
 
     const updated = await Appointment.findOneAndUpdate(
@@ -208,7 +250,8 @@ function rejectionForStatus(status) {
         case APPOINTMENT_STATUS.CANCELLED:
             return new CheckinError("APPOINTMENT_CANCELLED", 409, "This appointment was cancelled.");
         case APPOINTMENT_STATUS.EXPIRED:
-        case APPOINTMENT_STATUS.NO_SHOW:
+        case APPOINTMENT_STATUS.MISSED:
+        case APPOINTMENT_STATUS.NO_SHOW: // legacy status of historical records
             return new CheckinError("QR_EXPIRED", 410, "This QR code has expired.");
         case APPOINTMENT_STATUS.PENDING:
             return new CheckinError("APPOINTMENT_NOT_CONFIRMED", 409, "This appointment has not been confirmed by the doctor.");
@@ -245,16 +288,25 @@ async function checkInByToken({ organizationId, token, now = new Date() }) {
         throw rejectionForStatus(appt.status);
     }
 
-    const expiry = appt.qrExpiresAt || appt.endDateTime;
-    if (!expiry || expiry.getTime() <= now.getTime() || !appt.endDateTime || appt.endDateTime.getTime() <= now.getTime()) {
+    // Expiry is the ACTUAL slot end (never a fixed 30/60 minute window).
+    if (!appt.endDateTime || appt.endDateTime.getTime() <= now.getTime()) {
         throw new CheckinError("QR_EXPIRED", 410, "This QR code has expired.");
     }
 
-    // Check-in opens at the start of the appointment's (facility-local) day.
-    const opensAt = startOfLocalDay(appt.startDateTime, appt.timezone);
-    if (now.getTime() < opensAt.getTime()) {
+    // Check-in is valid on the appointment's local calendar date in the facility
+    // timezone, at ANY time of that day (including before the scheduled start).
+    const facilityTz = await resolveFacilityTimezone(appt);
+    const apptDay = localDateKey(appt.startDateTime, facilityTz);
+    const today = localDateKey(now, facilityTz);
+    if (today < apptDay) {
         throw new CheckinError("CHECKIN_NOT_OPEN", 409, "Check-in opens on the day of the appointment.");
     }
+    if (today > apptDay) {
+        throw new CheckinError("QR_EXPIRED", 410, "This QR code is only valid on the day of the appointment.");
+    }
+    const dayStart = DateTime.fromJSDate(now, { zone: facilityTz }).startOf("day");
+    const dayStartUtc = dayStart.toUTC().toJSDate();
+    const nextDayStartUtc = dayStart.plus({ days: 1 }).toUTC().toJSDate();
 
     // ATOMIC CLAIM
     const claimed = await Appointment.findOneAndUpdate(
@@ -263,6 +315,8 @@ async function checkInByToken({ organizationId, token, now = new Date() }) {
             organization: organizationId,
             qrTokenHash: tokenHash,
             status: APPOINTMENT_STATUS.CONFIRMED,
+            // Same-local-day + not-ended guard re-checked atomically with the claim
+            startDateTime: { $gte: dayStartUtc, $lt: nextDayStartUtc },
             endDateTime: { $gt: now },
             checkedInAt: null
         },
@@ -310,7 +364,7 @@ async function getTicketForReprint({ organizationId, appointmentId }) {
 }
 
 /** Today's checked-in patients of an organization (staff queue board). */
-async function getDailyQueue({ organizationId, dateKey }) {
+async function getDailyQueue({ organizationId, dateKey, timezone }) {
     const appts = await Appointment.find({
         organization: organizationId,
         queueDate: dateKey,
@@ -332,7 +386,7 @@ async function getDailyQueue({ organizationId, dateKey }) {
         doctorSpecialization: a.doctor ? a.doctor.specialization : "",
         roomNumber: a.room ? a.room.roomNumber : null,
         floor: a.room ? a.room.floor : null,
-        appointmentTime: `${formatLocal(a.startDateTime, a.timezone, "HH:mm")} - ${formatLocal(a.endDateTime, a.timezone, "HH:mm")}`,
+        appointmentTime: `${formatLocal(a.startDateTime, a.timezone || timezone, "HH:mm")} - ${formatLocal(a.endDateTime, a.timezone || timezone, "HH:mm")}`,
         checkedInAt: a.checkedInAt
     }));
 }
@@ -346,7 +400,8 @@ async function startConsultation({ doctorId, appointmentId, now = new Date() }) 
         {
             _id: appointmentId,
             doctor: doctorId,
-            status: APPOINTMENT_STATUS.CHECKED_IN
+            status: APPOINTMENT_STATUS.CHECKED_IN,
+            endDateTime: { $gt: now }
         },
         {
             $set: {
@@ -358,13 +413,24 @@ async function startConsultation({ doctorId, appointmentId, now = new Date() }) 
     );
 
     if (!updated) {
-        const existing = await Appointment.findOne({ _id: appointmentId, doctor: doctorId }).select("status");
+        const existing = await Appointment.findOne({ _id: appointmentId, doctor: doctorId }).select("status endDateTime");
         if (!existing) {
             throw new CheckinError("NOT_FOUND", 404, "Appointment not found or you are not authorized to update it.");
         }
         if (existing.status === APPOINTMENT_STATUS.IN_PROGRESS) {
             throw new CheckinError("ALREADY_IN_PROGRESS", 409, "Consultation is already in progress.");
+        }        if (
+            existing.status === APPOINTMENT_STATUS.CHECKED_IN &&
+            existing.endDateTime &&
+            existing.endDateTime.getTime() <= now.getTime()
+        ) {
+            throw new CheckinError(
+                "SLOT_ENDED",
+                410,
+                "The scheduled appointment slot has ended."
+            );
         }
+
         throw new CheckinError(
             "NOT_CHECKED_IN",
             409,

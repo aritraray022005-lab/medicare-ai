@@ -75,7 +75,8 @@ const appointmentSchema = new mongoose.Schema(
                 "Completed",
                 "Cancelled",
                 "Expired",
-                "No-Show"
+                "Missed",
+                "No-Show" // legacy name of "Missed"; kept for historical records
             ],
             default: "Pending"
         },
@@ -245,6 +246,13 @@ const appointmentSchema = new mongoose.Schema(
             default: null
         },
 
+        // Confirmed hospital appointment that ended without a check-in
+        missedAt: {
+            type: Date,
+            default: null
+        },
+
+        // Legacy (pre-"Missed") timestamp; kept for historical records
         noShowAt: {
             type: Date,
             default: null

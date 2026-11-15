@@ -236,20 +236,22 @@ const HOUR = 60 * MIN;
         assert(t && t.isAvailable === false);
     }, { needsReplicaSet: true });
 
-    await test("doctor confirmation issues QR; patient gets PNG QR; room hidden; Checked-In can scan", async () => {
+    await test("doctor confirmation does not pre-issue a future QR; patient gets PNG QR on appointment day; room hidden; Checked-In can scan", async () => {
         const doc = await Appointment.findById(bookedId);
         // bring the appointment to "today" window so check-in is open
         await Appointment.updateOne({ _id: bookedId }, { $set: { startDateTime: new Date(Date.now() - 5 * MIN), endDateTime: new Date(Date.now() + 25 * MIN) } });
         const res = mockRes();
         await doctorController.updateAppointmentStatus({ userDetails: { _id: doctorId }, body: { appointmentId: String(bookedId), status: "confirmed" } }, res);
         assert.strictEqual(res.statusCode, 200, JSON.stringify(res.data));
-        const withQr = await Appointment.findById(bookedId).select("+qrTokenHash +qrNonce");
-        assert(withQr.qrTokenHash && withQr.qrNonce);
+        let withQr = await Appointment.findById(bookedId).select("+qrTokenHash +qrNonce");
+        assert(!withQr.qrTokenHash && !withQr.qrNonce, "confirmation must not pre-issue QR credentials");
 
         const qres = mockRes();
         await checkinController.getAppointmentQr({ userDetails: { _id: patientId }, params: { appointmentId: String(bookedId) } }, qres);
         assert.strictEqual(qres.statusCode, 200, JSON.stringify(qres.data));
         assert(qres.data.qrCodeDataUrl.startsWith("data:image/png;base64,"));
+        withQr = await Appointment.findById(bookedId).select("+qrTokenHash +qrNonce");
+        assert(withQr.qrTokenHash && withQr.qrNonce, "credentials should be lazily issued after the local-day check");
         assert(!JSON.stringify(qres.data).includes(withQr.qrTokenHash));
 
         const list = mockRes();
@@ -308,8 +310,8 @@ const HOUR = 60 * MIN;
         const r = await scan(orgA, a.token);
         assert.strictEqual(r.statusCode, 409); assert.strictEqual(r.data.code, "ALREADY_CHECKED_IN");
     });
-    await test("cancelled / pending / completed / expired / no-show appointments cannot be scanned", async () => {
-        const expect = { Cancelled: [409, "APPOINTMENT_CANCELLED"], Pending: [409, "APPOINTMENT_NOT_CONFIRMED"], Completed: [409, "APPOINTMENT_COMPLETED"], Expired: [410, "QR_EXPIRED"], "No-Show": [410, "QR_EXPIRED"] };
+    await test("cancelled / pending / completed / expired / missed / legacy no-show appointments cannot be scanned", async () => {
+        const expect = { Cancelled: [409, "APPOINTMENT_CANCELLED"], Pending: [409, "APPOINTMENT_NOT_CONFIRMED"], Completed: [409, "APPOINTMENT_COMPLETED"], Expired: [410, "QR_EXPIRED"], Missed: [410, "QR_EXPIRED"], "No-Show": [410, "QR_EXPIRED"] };
         for (const [status, [code, c]] of Object.entries(expect)) {
             const a = await mkAppt({ status });
             const r = await scan(orgA, a.token);
@@ -381,7 +383,7 @@ const HOUR = 60 * MIN;
     });
 
     // ---------- CRON ----------
-    await test("cron: completes 1h after END; boundary exact; no-show; expired; cancelled untouched; idempotent", async () => {
+    await test("cron: finalises at EXACT slot END (no grace); Missed for unattended; expired; cancelled untouched; idempotent", async () => {
         await Appointment.deleteMany({});
         const T = new Date("2026-11-12T04:30:00.000Z"); // 10:00 IST
         const end = new Date(T.getTime() + 30 * MIN);   // 10:30 IST
@@ -393,26 +395,27 @@ const HOUR = 60 * MIN;
         const pending = await mk({ status: "Pending" });
         const completedAlready = await mk({ status: "Completed" });
 
-        // 10:30 IST (end): QR scanning stops, pending expires, nothing completes yet
-        let s = await runAppointmentLifecycleSweep(end);
-        assert.strictEqual(await statusOf(pending.id), "Expired");
+        // 1 ms before END: nothing changes
+        let s = await runAppointmentLifecycleSweep(new Date(end.getTime() - 1));
+        assert.deepStrictEqual(s, { expired: 0, completed: 0, missed: 0, legacyExpired: 0 });
         assert.strictEqual(await statusOf(checked.id), "Checked-In");
         assert.strictEqual(await statusOf(unattended.id), "Confirmed");
-        // 11:29 IST: still not completed
-        await runAppointmentLifecycleSweep(new Date(end.getTime() + 59 * MIN));
-        assert.strictEqual(await statusOf(checked.id), "Checked-In");
-        // 11:30 IST: completed
-        s = await runAppointmentLifecycleSweep(new Date(end.getTime() + 60 * MIN));
+
+        // Exactly at END (10:30 IST): finalised immediately, no grace period
+        s = await runAppointmentLifecycleSweep(end);
         assert.strictEqual(s.completed, 2);
+        assert.strictEqual(s.missed, 1);
+        assert.strictEqual(await statusOf(pending.id), "Expired");
         assert.strictEqual(await statusOf(checked.id), "Completed");
         assert.strictEqual(await statusOf(inprog.id), "Completed");
-        assert.strictEqual(await statusOf(unattended.id), "No-Show");   // never attended => not "Completed"
-        assert.strictEqual(await statusOf(cancelled.id), "Cancelled");  // never overwritten
+        assert.strictEqual(await statusOf(unattended.id), "Missed");     // never attended => not "Completed"
+        assert.strictEqual(await statusOf(cancelled.id), "Cancelled");   // never overwritten
         assert.strictEqual(await statusOf(completedAlready.id), "Completed");
         // missed-run catch-up + idempotency
         s = await runAppointmentLifecycleSweep(new Date(end.getTime() + 5 * 24 * HOUR));
-        assert.deepStrictEqual(s, { expired: 0, completed: 0, noShow: 0, legacyExpired: 0 });
+        assert.deepStrictEqual(s, { expired: 0, completed: 0, missed: 0, legacyExpired: 0 });
         assert.strictEqual((await Appointment.findById(checked.id)).completedBy, "System");
+        assert.strictEqual((await Appointment.findById(unattended.id)).missedAt.getTime(), end.getTime());
     });
     await test("cron: legacy independent Pending (date+time only) expires in Asia/Kolkata", async () => {
         const mk = (time) => Appointment.collection.insertOne({ patient: oid(), doctor: oid(), date: new Date("2026-11-12T00:00:00Z"), time, status: "Pending", bookingType: "Independent" });
