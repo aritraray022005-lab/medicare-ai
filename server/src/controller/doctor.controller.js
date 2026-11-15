@@ -3,7 +3,6 @@ const Patient = require("../models/patient.model");
 const jwt = require('jsonwebtoken');
 const appointmentModel = require("../models/appointment.model");
 const { APPOINTMENT_STATUS, isAppointmentWindowExpired } = require("../util/appointmentLifecycle.util");
-const { buildQrFields } = require("../services/checkin.service");
 const config = require("../config/config");
 const OTPutil = require("../util/otp.util");
 const { executeTransactionWithRetry } = require("../util/transaction.util");
@@ -874,7 +873,7 @@ const updateAppointmentStatus = async (req, res) => {
                 }
 
                 // Lifecycle guards: never overwrite Cancelled / Checked-In / In Progress /
-                // Completed / Expired / No-Show appointments.
+                // Completed / Expired / Missed (or legacy No-Show) appointments.
                 if (normalizedStatus === "Confirmed") {
                     if (appt.status !== APPOINTMENT_STATUS.PENDING) {
                         const err = new Error(`Only pending appointments can be confirmed (current status: ${appt.status}).`);
@@ -896,10 +895,9 @@ const updateAppointmentStatus = async (req, res) => {
                 }
 
                 appt.status = normalizedStatus;
-                if (normalizedStatus === "Confirmed" && appt.bookingType === "Organization" && appt.organization && appt.endDateTime) {
-                    // Issue the check-in QR (only the hash of the token is stored)
-                    appt.set(buildQrFields(appt._id, appt.endDateTime));
-                }
+                // QR credentials are issued lazily by GET /appointment/:id/qr,
+                // after the backend verifies that the appointment's facility-local
+                // calendar date is today. Future appointments must not receive a token.
                 if (normalizedStatus === "Cancelled") {
                     appt.cancelledBy = "Doctor";
                     appt.cancelledAt = new Date();

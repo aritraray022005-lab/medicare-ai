@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
-import { User, Calendar, LogOut, CheckCircle, XCircle, Clock, BarChart3, TrendingUp, Activity, ChevronLeft, ChevronRight, Filter, Building2, Send, Undo2, DoorOpen, AlertTriangle, Layers, CalendarDays, RefreshCw } from 'lucide-react';
+import { User, Calendar, LogOut, CheckCircle, XCircle, Clock, BarChart3, TrendingUp, Activity, ChevronLeft, ChevronRight, Filter, Building2, Send, Undo2, DoorOpen, AlertTriangle, Layers, CalendarDays, RefreshCw, Play } from 'lucide-react';
 import DoctorClinicLocation from '../components/DoctorClinicLocation';
 
 const DoctorDashboard = () => {
@@ -366,6 +366,24 @@ const handleSubmitRoomRequest = async (e) => {
     }
   };
 
+  const handleStartConsultation = async (appointmentId) => {
+    setActionLoading(appointmentId);
+    try {
+      const response = await axios.patch(
+        '/api/doctors/appointment/start',
+        { appointmentId },
+        { withCredentials: true }
+      );
+      if (response.data.status === 'success') {
+        await fetchDashboardData();
+      }
+    } catch (err) {
+      alert(err.response?.data?.msg || err.response?.data?.message || 'Failed to start consultation.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handleProfilePictureUpload = async (e) => {
     if (!e.target.files || !e.target.files[0]) return;
     
@@ -697,6 +715,10 @@ const handleSubmitRoomRequest = async (e) => {
                                   appointment.status === 'Pending' ? 'bg-orange-100 text-orange-700' :
                                   (appointment.status === 'confirmed' || appointment.status === 'Confirmed') ? 'bg-green-100 text-green-700' :
                                   appointment.status === 'Expired' ? 'bg-gray-100 text-gray-700' :
+                                  appointment.status === 'Checked-In' ? 'bg-blue-100 text-blue-700' :
+                                  appointment.status === 'In Progress' ? 'bg-indigo-100 text-indigo-700' :
+                                  appointment.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' :
+                                  appointment.status === 'Missed' ? 'bg-orange-100 text-orange-700' :
                                   'bg-red-100 text-red-700'
                                 }`}>
                                   {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
@@ -744,6 +766,15 @@ const handleSubmitRoomRequest = async (e) => {
                                   <XCircle size={16} /> {actionLoading === appointment._id ? '...' : 'Reject'}
                                 </button>
                               </div>
+                            )}
+                            {appointment.status === 'Checked-In' && appointment.bookingType === 'Organization' && (
+                              <button
+                                onClick={() => handleStartConsultation(appointment._id)}
+                                disabled={actionLoading === appointment._id}
+                                className="btn btn-primary text-sm flex items-center gap-1"
+                              >
+                                <Play size={16} /> {actionLoading === appointment._id ? 'Starting...' : 'Start Consultation'}
+                              </button>
                             )}
                           </div>
                         ))}

@@ -9,13 +9,16 @@ const STATUS_STYLES = {
   'In Progress': 'bg-indigo-100 text-indigo-800',
   Completed: 'bg-emerald-100 text-emerald-800',
   Expired: 'bg-gray-100 text-gray-700',
-  'No-Show': 'bg-gray-100 text-gray-700',
+  Missed: 'bg-orange-100 text-orange-800',
+  // Legacy name of "Missed" (historical records)
+  'No-Show': 'bg-orange-100 text-orange-800',
   Cancelled: 'bg-red-100 text-red-700'
 };
 
 const STATUS_LABELS = {
   Pending: 'Awaiting confirmation',
-  Confirmed: 'Confirmed'
+  Confirmed: 'Confirmed',
+  'No-Show': 'Missed'
 };
 
 const AppointmentsList = ({ onBookNew }) => {
@@ -195,6 +198,19 @@ const AppointmentsList = ({ onBookNew }) => {
                         </span>
                       )}
                     </div>
+
+                    {isOrg && appt.status === 'Confirmed' && !qrAvailable && appt.endDateTime && new Date(appt.endDateTime) > new Date() && (
+                      <p className="text-xs text-gray-500 flex items-center gap-1">
+                        <QrCode size={13} />
+                        Your check-in QR code will be available on the day of your appointment.
+                      </p>
+                    )}
+
+                    {(appt.status === 'Missed' || appt.status === 'No-Show') && (
+                      <p className="text-xs text-orange-700">
+                        This appointment was missed because no check-in happened before the scheduled end time.
+                      </p>
+                    )}
 
                     {(appt.status === 'Checked-In' || appt.status === 'In Progress') && (
                       <p className="text-xs text-blue-700 flex items-center gap-1 font-semibold">
