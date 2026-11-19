@@ -10,170 +10,202 @@
 
 [🌐 Live demo](https://medicare-ai-gules.vercel.app/) &nbsp;·&nbsp; [🩺 For doctors](https://medicare-ai-gules.vercel.app/doctor) &nbsp;·&nbsp; [🏢 For facilities](https://medicare-ai-gules.vercel.app/organization)
 
+<br>
+
+![MediCare AI landing page](screenshots/landing-page.png)
+
 </div>
 
 ---
 
-## 🎯 The problem
+## 📑 Contents
 
-Most healthcare software is built for large hospital chains. For an independent doctor or a small clinic it is too expensive, too complicated and far more than they need. So they fall back on phone calls, paper registers and chat messages.
-
-```mermaid
-flowchart LR
-    A["📒 Paper registers<br/>📞 Phone calls<br/>💬 Chat messages"] --> B["Double-booked rooms"]
-    A --> C["Empty slots"]
-    A --> D["Patients can't find<br/>or trust small practices"]
-    A --> E["Messy coordination with<br/>visiting doctors"]
-
-    classDef pain fill:#fee2e2,stroke:#b91c1c,color:#7f1d1d
-    classDef src fill:#fef3c7,stroke:#b45f10,color:#78350f
-    class B,C,D,E pain
-    class A src
-```
-
-Patients face the other side of the same problem: unclear symptoms, no way to tell who is a verified doctor, and no idea which slots are really open.
-
-## 💡 The solution
-
-MEDICARE AI is one platform where patients, doctors and facilities meet.
-
-```mermaid
-flowchart LR
-    P["🧑 Patients<br/><b>Free to use</b>"]
-    M(["🏥 MEDICARE AI<br/>AI guidance · verified profiles<br/>real availability · management tools"])
-    D["🩺 Independent doctors<br/><b>Pay for patient reach</b>"]
-    O["🏢 Clinics and organizations<br/><b>Pay for reach and management</b>"]
-
-    P -- "symptoms, questions,<br/>booking requests" --> M
-    M -- "ready-to-book patients" --> D
-    M -- "ready-to-book patients" --> O
-    D -- "pays for visibility<br/>and tools" --> M
-    O -- "pays for visibility<br/>and management" --> M
-
-    classDef free fill:#d3f3ee,stroke:#0f8b83,color:#0c2d33
-    classDef core fill:#0f8b83,stroke:#0b6e68,color:#ffffff
-    classDef doc fill:#dbeafe,stroke:#1479b8,color:#0b2a3f
-    classDef org fill:#fde9cf,stroke:#b45f10,color:#3a2105
-    class P free
-    class M core
-    class D doc
-    class O org
-```
-
-- **Patients** describe how they feel, get AI-guided advice on urgency and the right specialty, and book a real, verified slot.
-- **Independent doctors** get a professional profile, a steady flow of patients who are ready to book, and a simple dashboard instead of a notebook.
-- **Small clinics and organizations** get the tools to manage rooms, schedules and visiting doctors without paying for an enterprise system.
-
-## 👥 Who it is for
-
-| Audience | What they get | How it works commercially |
-| --- | --- | --- |
-| 🧑 **Patients** | Free AI symptom guidance, verified doctors, real appointment slots, free expert Q&A | Free to use |
-| 🩺 **Independent doctors** | A verified profile, visibility to patients actively looking for care, appointment management | Doctors pay to be listed and to reach new patients |
-| 🏢 **Clinics, hospitals and medical centres** | Room scheduling, doctor affiliations and day-to-day management at a fraction of enterprise software cost | Organizations pay for management tools and patient reach |
-
-Patients are the audience. Doctors and facilities are the customers who get paid-for value from reaching them and running their operations in one place.
-
-## 🔄 From "I feel unwell" to a confirmed visit
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor P as 🧑 Patient
-    participant M as 🏥 MEDICARE AI
-    actor D as 🩺 Doctor
-
-    P->>M: Describes symptoms in plain words
-    M-->>P: Urgency level, likely causes, right specialty
-    P->>M: Chooses a verified doctor and an open slot
-    M->>D: Booking arrives with reason and symptoms attached
-    D-->>P: Verifies the appointment
-    Note over P,D: No double-bookings. No phone tag.
-```
-
-## ✨ What it does
-
-### 🧑 For patients
-- Chat with an **AI health assistant** and run an **AI symptom check** that returns an urgency level, likely causes and the specialty to see.
-- Find **admin-verified doctors** and facilities and book from **real availability**.
-- Ask health questions and read answers from verified doctors in a free **Q&A** section.
-
-### 🩺 For doctors
-- Build a trusted profile verified by our admin team.
-- Publish consultation hours and receive bookings that arrive with the patient's reason and symptoms attached.
-- Confirm or decline appointments from one dashboard.
-- Join facilities and request room time, and answer public questions to build a reputation.
-
-### 🏢 For facilities
-- Set up consultation rooms and departments and publish room availability.
-- Approve the doctors who practise with you.
-- Rooms are booked fairly on a first-come, first-served basis, so **two doctors can never get the same room at the same time**.
-- See bookings, requests and appointments in one place.
-
-### 🛡️ Trust and safety
-- Every doctor and facility is **verified by an admin** before patients see them.
-- Separate, protected access for patients, doctors, facilities and administrators.
-- Email verification and secure password recovery.
-- Clear guidance that the AI is informational only and is not for emergencies.
-
-## 🚀 Getting started is quick
-
-```mermaid
-flowchart LR
-    subgraph DOC["🩺 Doctors"]
-        direction LR
-        d1["Register"] --> d2["Verify email"] --> d3["Admin<br/>verification"] --> d4["Publish<br/>slots"] --> d5["Receive<br/>bookings"]
-    end
-    subgraph ORG["🏢 Facilities"]
-        direction LR
-        o1["Register"] --> o2["Verify email"] --> o3["Admin<br/>verification"] --> o4["Add rooms<br/>and doctors"] --> o5["Manage<br/>schedules"]
-    end
-
-    classDef doc fill:#dbeafe,stroke:#1479b8,color:#0b2a3f
-    classDef org fill:#fde9cf,stroke:#b45f10,color:#3a2105
-    class d1,d2,d3,d4,d5 doc
-    class o1,o2,o3,o4,o5 org
-    style DOC fill:#f8fafc,stroke:#bfdff3,color:#0b2a3f
-    style ORG fill:#fffaf3,stroke:#f5d9b6,color:#3a2105
-```
-
-## 🏆 Why it stands out
-
-- **Built around a real gap.** It serves small practices that existing software overlooks, with a clear way to pay for itself.
-- **Both sides of the market.** Patients bring demand, and doctors and facilities get value, which gives the platform a natural growth loop.
-- **Reliable by design.** Scheduling is built so bookings never collide, and expired appointments are cleaned up automatically.
-- **Responsible AI.** It helps patients decide what to do next, while keeping real doctors at the centre of care.
-- **Complete product, not a demo.** Four user roles, verification workflows, email delivery, Q&A and live deployment.
-
-## 🧰 Built with
-
-React · Node.js · MongoDB · Google Gemini AI
-
-## 🗺️ Roadmap
-
-```mermaid
-flowchart LR
-    N["✅ Live now<br/>AI guidance · booking<br/>verification · room scheduling · Q&A"]
-    X["🔜 Next<br/>Appointment reminders<br/>Doctor reviews and ratings"]
-    L["🔭 Later<br/>Multi-language support<br/>Online payments and subscriptions"]
-    N --> X --> L
-
-    classDef now fill:#d3f3ee,stroke:#0f8b83,color:#0c2d33
-    classDef next fill:#dbeafe,stroke:#1479b8,color:#0b2a3f
-    classDef later fill:#fde9cf,stroke:#b45f10,color:#3a2105
-    class N now
-    class X next
-    class L later
-```
-
-## ⚠️ Disclaimer
-
-MEDICARE AI provides general health information only. It does not replace advice, diagnosis or treatment from a qualified doctor, and it is not for emergencies. In an emergency, call your local emergency number.
+[The Problem](#-the-problem) · [The Solution](#-the-solution) · [Business Motive](#-business-motive) · [Features](#-features) · [How a Visit Works](#-how-a-visit-works) · [Screenshots](#-screenshots) · [Tech](#-technology) · [Roadmap](#-roadmap) · [Disclaimer](#-disclaimer) · [License](#-license-and-usage) · [Author](#-author)
 
 ---
 
+## 🎯 The Problem
+
+Large hospitals have software to run appointments, rooms and doctors. Smaller providers usually do not.
+
+| 😟 Who struggles | ❌ What goes wrong |
+|---|---|
+| 🏢 **Small clinics and hospitals** | Management software is too expensive, so they rely on paper registers, phone calls and messages |
+| 🩺 **Independent doctors** | Time goes into scheduling and records instead of patients, and new patients cannot easily find them |
+| 🧑 **Patients** | Hard to find a doctor who is actually available and to get a confirmed slot |
+| 📋 **Everyone** | Manual scheduling causes double bookings, empty slots and extra admin work |
+
+## 💡 The Solution
+
+> **MediCare AI is one platform that connects patients, independent doctors, and clinics or hospitals.**
+
+- 🔎 Patients find verified doctors and book real time slots online
+- 🗓️ Doctors publish availability, confirm appointments and get discovered
+- 🏥 Clinics and hospitals manage rooms, affiliated doctors and the daily patient queue
+- 🤖 A built-in AI assistant gives general guidance and points patients to a real doctor
+
+---
+
+## 📈 Business Motive
+
+MediCare AI is built for the providers that big software leaves behind.
+
+| 🎯 Who we serve first | 📌 What they need | 🎁 What MediCare AI gives them |
+|---|---|---|
+| 🏢 **Small and medium clinics and hospitals** | A low-cost way to manage the clinic and its doctors | Rooms, doctor affiliations, appointment and queue tools in one place |
+| 🩺 **Doctors who want more patients** | To be found and to manage visits easily | A public profile, their own schedule and a simple dashboard |
+| 🧑 **Patients** (the demand side) | To find a doctor and book quickly | Search, real availability and confirmed appointments |
+
+> 💼 **Proposed business model (not implemented):** low-cost subscription plans for doctors and facilities. Today the platform has **no payments and earns no revenue**. It is a working product that proves the idea.
+
+---
+
+## ✨ Features
+
+<table>
+<tr>
+<td width="33%" valign="top">
+
+### 🧑 Patients
+- Create an account and verify email
+- Search verified doctors and facilities
+- Book, view and cancel appointments
+- Get a **QR code** for check-in
+- Try the AI **symptom checker** and **health assistant** (informational only)
+- Ask health questions and read answers from verified doctors
+
+</td>
+<td width="33%" valign="top">
+
+### 🩺 Doctors
+- Set weekly availability
+- Confirm or cancel appointments
+- Join clinics and hospitals as an affiliated doctor
+- Answer patient questions
+- See basic appointment analytics
+
+</td>
+<td width="33%" valign="top">
+
+### 🏢 Clinics and Hospitals
+- Manage rooms and time slots
+- Approve doctors who want to join
+- **Scan the patient's QR code** to check them in
+- Issue a **queue number** and a **printable ticket**
+
+</td>
+</tr>
+</table>
+
+### 🛡️ Trust and Safety
+
+- ✅ Doctors and facilities are **verified by an admin**
+- 🗂️ Four separate dashboards: patient, doctor, facility and admin
+- ⚠️ Clear medical disclaimers and an emergency notice
+
+---
+
+## 🔄 How a Visit Works
+
+```mermaid
+flowchart LR
+    A[🧑 Patient checks symptoms<br>optional] --> B[🔎 Finds a doctor or clinic]
+    B --> C[🗓️ Books an available slot]
+    C --> D[🩺 Doctor confirms]
+    D --> E[📱 Patient shows QR code on the day]
+    E --> F[🏥 Clinic scans it<br>queue number and ticket issued]
+    F --> G[💬 Consultation]
+```
+
+---
+
+## 📸 Screenshots
+
 <div align="center">
 
-Built by **Aritra Ray**
+| 🧑 Patient appointments | 🩺 Doctor dashboard |
+|:---:|:---:|
+| ![Patient appointments](screenshots/patient-appointments.png) | ![Doctor dashboard](screenshots/doctor-dashboard.png) |
+
+| 🏥 Clinic check-in and printable ticket |
+|:---:|
+| ![Facility check-in](screenshots/facility-checkin-ticket.png) |
+
+<sub>Screenshots are from a local run with fictional demo data.</sub>
+
+</div>
+
+---
+
+## 🧰 Technology
+
+| Layer | Technology |
+|---|---|
+| 🎨 Frontend | React |
+| ⚙️ Backend | Node.js and Express |
+| 🗄️ Database | MongoDB |
+| 🤖 AI | Google Gemini |
+
+The frontend is hosted on Vercel and the backend on Render.
+
+## 🚀 Try It
+
+The project is available as a hosted demo only:
+
+### 👉 [**medicare-ai-gules.vercel.app**](https://medicare-ai-gules.vercel.app)
+
+> ⏳ The backend runs on a free hosting tier, so the first request after a period of inactivity may take a little while to respond.
+
+Source code and setup instructions are not published. See [License and Usage](#-license-and-usage).
+
+---
+
+## 🗺️ Roadmap
+
+Planned features, **not built yet**:
+
+- [ ] 📚 RAG-based healthcare chatbot using verified medical sources, with clear disclaimers
+- [ ] 🧠 Smarter AI help for appointments and patient support
+- [ ] 📊 Advanced analytics for doctors and clinics
+- [ ] 📱 Mobile app for Android and iOS
+- [ ] 🔔 Notifications
+- [ ] 💳 Online payments
+- [ ] 🎥 Telemedicine
+
+---
+
+## ⚠️ Disclaimer
+
+> 🚨 **MediCare AI is not for emergencies.** If you think your life is at risk, call your local emergency number right away.
+>
+> The AI features give general information only. They do not diagnose or prescribe and do not replace a qualified doctor.
+>
+> All doctor, patient and clinic data shown in the demo and screenshots is fictional.
+
+---
+
+## 🔒 License and Usage
+
+**© 2026 Aritra Ray. All rights reserved.**
+
+MediCare AI is a proprietary project. Viewing the live demo and this page is welcome. Without written permission from the author, you may **not**:
+
+- copy, clone, modify, redistribute or resell the project, its code, design or content
+- reuse its screenshots, branding, text or database design in another product
+- scrape, reverse engineer or attempt to extract the source code of the hosted demo
+
+For collaboration, evaluation or licensing requests, please contact the author.
+
+---
+
+## 👤 Author
+
+<div align="center">
+
+**Built by ARITRA RAY** · Kolkata, India
+
+*An academic software project*
+
+<sub>MediCare AI™ · All rights reserved</sub>
 
 </div>
