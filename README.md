@@ -8,6 +8,10 @@
 
 [🌐 Live demo](https://medicare-ai-gules.vercel.app/) &nbsp;·&nbsp; [🩺 For doctors](https://medicare-ai-gules.vercel.app/doctor) &nbsp;·&nbsp; [🏢 For facilities](https://medicare-ai-gules.vercel.app/organization)
 
+<br>
+
+![MediCare AI landing page](screenshots/landing-page.png)
+
 </div>
 
 ---
