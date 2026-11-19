@@ -4,9 +4,7 @@
 
 **Affordable practice and facility management for independent doctors and small healthcare organizations, with AI-guided patients delivered to their door.**
 
-![Status](https://img.shields.io/badge/status-live-0f8b83?style=for-the-badge)
 ![For](https://img.shields.io/badge/for-doctors%20%C2%B7%20clinics%20%C2%B7%20patients-1479b8?style=for-the-badge)
-![AI](https://img.shields.io/badge/AI-symptom%20guidance-b45f10?style=for-the-badge)
 
 [🌐 Live demo](https://medicare-ai-gules.vercel.app/) &nbsp;·&nbsp; [🩺 For doctors](https://medicare-ai-gules.vercel.app/doctor) &nbsp;·&nbsp; [🏢 For facilities](https://medicare-ai-gules.vercel.app/organization)
 
@@ -123,15 +121,24 @@ flowchart LR
 
 <div align="center">
 
-| 🧑 Patient appointments | 🩺 Doctor dashboard |
-|:---:|:---:|
-| ![Patient appointments](screenshots/patient-appointments.png) | ![Doctor dashboard](screenshots/doctor-dashboard.png) |
+### 🧑 Patient: appointments and QR check-in
+![Patient appointments](screenshots/patient-appointments.png)
 
-| 🏥 Clinic check-in and printable ticket |
-|:---:|
-| ![Facility check-in](screenshots/facility-checkin-ticket.png) |
+### 🩺 Doctor: clinic and hospital affiliations
+![Doctor affiliations](screenshots/doctor-affiliations.png)
 
-<sub>Screenshots are from a local run with fictional demo data.</sub>
+### 🏢 Clinic and hospital: rooms and availability
+![Facility rooms](screenshots/facility-rooms.png)
+
+### 📱 Clinic and hospital: patient check-in and queue ticket
+![Facility check-in](screenshots/facility-checkin.png)
+
+### 🛡️ Admin: verifying healthcare organizations
+![Admin organizations](screenshots/admin-organizations.png)
+
+<sub>Screenshots are from the live demo with fictional test data.</sub>
+
+### 👉 [**See it live: tap to open the demo**](https://medicare-ai-gules.vercel.app/)
 
 </div>
 
